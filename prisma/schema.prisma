@@ -1,0 +1,51 @@
+// CQC Compliance Intelligence Bulletin — data model
+// SQLite has no native enum/array support, so enum-like fields are plain
+// strings validated against TS union types in src/lib/types.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("CUSTOMER") // CUSTOMER | ADMIN
+  createdAt    DateTime @default(now())
+
+  subscription Subscription?
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  careHomeName  String
+  tier          String // SOLO | SMALL_GROUP | MULTI_SITE
+  billingStatus String   @default("TRIALING") // TRIALING | ACTIVE | PAST_DUE | CANCELED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model BulletinEntry {
+  id                  String    @id @default(cuid())
+  title               String
+  sourceName          String
+  sourceUrl           String
+  rawText             String
+  summary             String
+  impactLevel         String // HIGH | MEDIUM | LOW
+  topics              String // comma-separated topic slugs
+  regulatedActivities String // comma-separated
+  actionChecklist     String // JSON-stringified string[]
+  status              String    @default("DRAFT") // DRAFT | PUBLISHED
+  publishedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
