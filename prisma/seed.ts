@@ -175,16 +175,50 @@ async function main() {
     },
   ];
 
+  const createdByTitle = new Map<string, Awaited<ReturnType<typeof prisma.bulletinEntry.create>>>();
+
   for (const entry of entries) {
-    await prisma.bulletinEntry.create({
+    const created = await prisma.bulletinEntry.create({
       data: {
         ...entry,
         actionChecklist: JSON.stringify(entry.actionChecklist),
       },
     });
+    createdByTitle.set(entry.title, created);
   }
 
   console.log(`Created ${entries.length} bulletin entries.`);
+
+  // Demo data for the favourites and checklist-progress features: pin a
+  // couple of entries for the demo customer and partially tick a couple of
+  // checklists, so both features have something to show on first login.
+  const safeguardingEntry = createdByTitle.get(
+    "CQC tightens expectations on safeguarding notifications after regulation 13 review"
+  )!;
+  const medicinesEntry = createdByTitle.get(
+    "MHRA and CQC issue joint alert on controlled drugs record-keeping failures"
+  )!;
+  const careCertificateEntry = createdByTitle.get(
+    "Skills for Care updates Care Certificate standards and induction expectations"
+  )!;
+
+  await prisma.favouriteEntry.createMany({
+    data: [
+      { userId: customer.id, entryId: safeguardingEntry.id },
+      { userId: customer.id, entryId: careCertificateEntry.id },
+    ],
+  });
+
+  await prisma.checklistProgress.createMany({
+    data: [
+      // Favourited and partway through the checklist (3 of 6).
+      { userId: customer.id, entryId: safeguardingEntry.id, completedItems: JSON.stringify([0, 1, 3]) },
+      // Not favourited, but progress is tracked independently (2 of 6).
+      { userId: customer.id, entryId: medicinesEntry.id, completedItems: JSON.stringify([0, 2]) },
+    ],
+  });
+
+  console.log("Seeded favourites and checklist progress for the demo customer.");
 }
 
 main()

@@ -1,16 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { toBulletinView } from "@/lib/bulletin-view";
-import { ImpactBadge } from "@/components/impact-badge";
+import { BulletinCard } from "@/components/bulletin-card";
 import { IMPACT_LEVELS, type ImpactLevel } from "@/lib/types";
-import { TOPICS, topicLabel } from "@/lib/taxonomy";
-
-function formatDate(date: Date | null): string {
-  if (!date) return "Unpublished";
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(
-    date
-  );
-}
+import { TOPICS } from "@/lib/taxonomy";
+import { requireUser } from "@/lib/dal";
+import { getFavouriteEntryIds, getChecklistProgressMap } from "@/lib/user-entry-state";
+import { tallyChecklist } from "@/lib/progress";
 
 function buildHref(params: { impact?: string; topic?: string }) {
   const search = new URLSearchParams();
@@ -25,17 +21,22 @@ export default async function DashboardFeedPage({
 }: {
   searchParams: Promise<{ impact?: string; topic?: string }>;
 }) {
+  const user = await requireUser();
   const { impact, topic } = await searchParams;
   const activeImpact = IMPACT_LEVELS.includes(impact as ImpactLevel) ? (impact as ImpactLevel) : undefined;
   const activeTopic = TOPICS.some((t) => t.slug === topic) ? topic : undefined;
 
-  const entries = await prisma.bulletinEntry.findMany({
-    where: {
-      status: "PUBLISHED",
-      ...(activeImpact ? { impactLevel: activeImpact } : {}),
-    },
-    orderBy: { publishedAt: "desc" },
-  });
+  const [entries, favouriteIds, progressMap] = await Promise.all([
+    prisma.bulletinEntry.findMany({
+      where: {
+        status: "PUBLISHED",
+        ...(activeImpact ? { impactLevel: activeImpact } : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+    }),
+    getFavouriteEntryIds(user.id),
+    getChecklistProgressMap(user.id),
+  ]);
 
   const views = entries
     .map(toBulletinView)
@@ -117,32 +118,12 @@ export default async function DashboardFeedPage({
       ) : (
         <div className="space-y-4">
           {views.map((entry) => (
-            <Link
+            <BulletinCard
               key={entry.id}
-              href={`/dashboard/${entry.id}`}
-              className="block rounded-lg border border-border bg-surface p-5 transition hover:border-primary/40 hover:shadow-sm"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <ImpactBadge level={entry.impactLevel} />
-                  <span className="text-xs text-muted">
-                    {entry.sourceName} &middot; {formatDate(entry.publishedAt)}
-                  </span>
-                </div>
-              </div>
-              <h2 className="mt-3 font-semibold text-foreground">{entry.title}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{entry.summary}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {entry.topics.map((slug) => (
-                  <span
-                    key={slug}
-                    className="rounded-full bg-background px-2.5 py-0.5 text-xs text-muted"
-                  >
-                    {topicLabel(slug)}
-                  </span>
-                ))}
-              </div>
-            </Link>
+              entry={entry}
+              isFavourited={favouriteIds.has(entry.id)}
+              progress={tallyChecklist(entry.actionChecklist.length, progressMap.get(entry.id) ?? [])}
+            />
           ))}
         </div>
       )}

@@ -6,6 +6,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const navItems: AppNavItem[] = [
     { href: "/dashboard", label: "Bulletin feed" },
+    { href: "/dashboard/favourites", label: "Favourites" },
     { href: "/dashboard/digest", label: "Email digest" },
     { href: "/dashboard/account", label: "Account" },
   ];

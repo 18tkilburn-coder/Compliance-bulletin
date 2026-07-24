@@ -60,6 +60,15 @@ The login page also shows these credentials for convenience during a demo.
 - **Customer dashboard** (`/dashboard`) — chronological feed of published
   entries, filterable by impact level and topic; each entry has a detail page
   with the full action checklist.
+- **Favourites** (`/dashboard/favourites`) — pin/star any entry from the feed
+  or detail page to pull it into a dedicated tab. One flag per account
+  (`FavouriteEntry`), since each care home has a single login rather than
+  per-staff accounts.
+- **Checklist progress** — tick off items on an entry's action checklist;
+  a progress badge ("X of Y done") shows next to the topic tags in both the
+  feed and detail view. Progress is stored per account per entry
+  (`ChecklistProgress`, as a JSON array of completed item indexes), so it
+  persists across logins and devices rather than living in browser state.
 - **Email digest preview** (`/dashboard/digest`) — renders the HTML email a
   subscriber would receive (rendered preview + raw HTML source). Preview
   only — nothing is actually sent in this MVP.

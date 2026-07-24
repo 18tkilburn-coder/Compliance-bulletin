@@ -39,3 +39,56 @@ export async function updateBillingStatusAction(formData: FormData): Promise<voi
 
   revalidatePath("/dashboard/account");
 }
+
+function revalidateEntryViews(entryId: string): void {
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/favourites");
+  revalidatePath(`/dashboard/${entryId}`);
+}
+
+export async function toggleFavouriteAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) throw new Error("Missing entry id.");
+
+  const existing = await prisma.favouriteEntry.findUnique({
+    where: { userId_entryId: { userId: user.id, entryId } },
+  });
+
+  if (existing) {
+    await prisma.favouriteEntry.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.favouriteEntry.create({ data: { userId: user.id, entryId } });
+  }
+
+  revalidateEntryViews(entryId);
+}
+
+export async function toggleChecklistItemAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const entryId = String(formData.get("entryId") ?? "");
+  const index = Number(formData.get("index"));
+  const checked = formData.get("checked") === "true";
+
+  if (!entryId || Number.isNaN(index)) throw new Error("Missing checklist item.");
+
+  const existing = await prisma.checklistProgress.findUnique({
+    where: { userId_entryId: { userId: user.id, entryId } },
+  });
+
+  const completed = new Set<number>(existing ? JSON.parse(existing.completedItems) : []);
+  if (checked) {
+    completed.add(index);
+  } else {
+    completed.delete(index);
+  }
+  const completedItems = JSON.stringify(Array.from(completed));
+
+  await prisma.checklistProgress.upsert({
+    where: { userId_entryId: { userId: user.id, entryId } },
+    create: { userId: user.id, entryId, completedItems },
+    update: { completedItems },
+  });
+
+  revalidateEntryViews(entryId);
+}

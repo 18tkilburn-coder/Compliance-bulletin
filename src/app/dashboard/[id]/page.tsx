@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { toBulletinView } from "@/lib/bulletin-view";
 import { ImpactBadge } from "@/components/impact-badge";
+import { FavouriteButton } from "@/components/favourite-button";
+import { ProgressBadge } from "@/components/progress-badge";
+import { ChecklistItem } from "@/components/checklist-item";
 import { topicLabel } from "@/lib/taxonomy";
+import { requireUser } from "@/lib/dal";
+import { parseCompletedIndices, tallyChecklist } from "@/lib/progress";
 
 function formatDate(date: Date | null): string {
   if (!date) return "Unpublished";
@@ -20,6 +25,7 @@ export default async function BulletinDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const user = await requireUser();
   const entry = await prisma.bulletinEntry.findUnique({ where: { id } });
 
   if (!entry || entry.status !== "PUBLISHED") {
@@ -28,27 +34,43 @@ export default async function BulletinDetailPage({
 
   const view = toBulletinView(entry);
 
+  const [favourite, progressRow] = await Promise.all([
+    prisma.favouriteEntry.findUnique({
+      where: { userId_entryId: { userId: user.id, entryId: id } },
+    }),
+    prisma.checklistProgress.findUnique({
+      where: { userId_entryId: { userId: user.id, entryId: id } },
+    }),
+  ]);
+
+  const completedIndices = parseCompletedIndices(progressRow?.completedItems);
+  const progress = tallyChecklist(view.actionChecklist.length, completedIndices);
+
   return (
     <div className="mx-auto max-w-3xl">
       <Link href="/dashboard" className="text-sm text-muted hover:text-foreground">
         &larr; Back to bulletin feed
       </Link>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <ImpactBadge level={view.impactLevel} />
-        <span className="text-sm text-muted">
-          {view.sourceName} &middot; Published {formatDate(view.publishedAt)}
-        </span>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <ImpactBadge level={view.impactLevel} />
+          <span className="text-sm text-muted">
+            {view.sourceName} &middot; Published {formatDate(view.publishedAt)}
+          </span>
+        </div>
+        <FavouriteButton entryId={view.id} isFavourited={Boolean(favourite)} />
       </div>
 
       <h1 className="mt-3 text-2xl font-semibold text-foreground">{view.title}</h1>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {view.topics.map((slug) => (
           <span key={slug} className="rounded-full bg-background px-2.5 py-0.5 text-xs text-muted">
             {topicLabel(slug)}
           </span>
         ))}
+        <ProgressBadge done={progress.done} total={progress.total} />
       </div>
 
       <section className="mt-6 rounded-lg border border-border bg-surface p-6">
@@ -73,18 +95,21 @@ export default async function BulletinDetailPage({
       </section>
 
       <section className="mt-6 rounded-lg border border-accent/30 bg-surface p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-accent">
-          Do before your next inspection
-        </h2>
-        <ul className="mt-3 space-y-2 text-sm text-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-accent">
+            Do before your next inspection
+          </h2>
+          <ProgressBadge done={progress.done} total={progress.total} />
+        </div>
+        <ul className="mt-3 space-y-2 text-sm">
           {view.actionChecklist.map((item, i) => (
-            <li key={i} className="flex gap-3">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[color:var(--accent)]"
-              />
-              <span>{item}</span>
-            </li>
+            <ChecklistItem
+              key={i}
+              entryId={view.id}
+              index={i}
+              label={item}
+              checked={completedIndices.includes(i)}
+            />
           ))}
         </ul>
       </section>
