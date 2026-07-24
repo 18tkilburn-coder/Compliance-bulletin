@@ -35,6 +35,26 @@ npx prisma migrate dev
 npx prisma db seed
 ```
 
+### After pulling schema changes
+
+`src/generated/prisma` (the Prisma Client) is gitignored — it's generated
+from `prisma/schema.prisma`, not committed. `npm run dev` and `npm run build`
+now run `prisma generate` automatically first (`predev` / `prebuild` in
+`package.json`), so this should never go stale.
+
+If you ever hit something like `Cannot read properties of undefined
+(reading 'findMany')` pointing at a Prisma model, the generated client is
+out of sync with the schema — usually a leftover `next dev` process from
+before the pull still serving old code, or `src/generated/prisma` predating
+the schema change. Fix:
+
+```bash
+rm -rf src/generated .next
+npx prisma generate
+npx prisma migrate dev   # or: npx prisma db push
+npm run dev              # make sure no other `next dev` is still running first
+```
+
 ### Demo accounts
 
 | Role     | Email                              | Password        |
