@@ -8,7 +8,7 @@ export function Logo({ href = "/" }: { href?: string }) {
       </span>
       <span className="flex flex-col leading-tight">
         <span className="text-sm font-semibold text-foreground">Compliance Bulletin</span>
-        <span className="text-[11px] text-muted -mt-0.5">CQC intelligence for care homes</span>
+        <span className="text-[11px] text-muted -mt-0.5">Regulatory intelligence for care homes</span>
       </span>
     </Link>
   );

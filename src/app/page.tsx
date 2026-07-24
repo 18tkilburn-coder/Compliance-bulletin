@@ -45,7 +45,7 @@ export default function Home() {
                 For registered managers &amp; providers
               </p>
               <h1 className="text-4xl font-semibold leading-tight tracking-tight text-foreground sm:text-5xl">
-                Know what CQC changed — and what to do about it.
+                Know what&apos;s changed — and what to do about it.
               </h1>
               <p className="mt-5 text-lg leading-relaxed text-muted">
                 Regulatory feeds tell you something changed. We tell you what it means for
@@ -111,7 +111,7 @@ export default function Home() {
               Aggregation isn&apos;t the hard part.
             </h2>
             <p className="mt-2 max-w-2xl text-muted">
-              Anyone can forward you a link to a CQC guidance page. The job is working out
+              Anyone can forward you a link to a regulatory guidance page. The job is working out
               what it actually requires of your service — and that takes reading time most
               registered managers don&apos;t have.
             </p>
