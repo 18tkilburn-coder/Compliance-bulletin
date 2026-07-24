@@ -4,7 +4,7 @@ import { SESSION_COOKIE } from "@/lib/session";
 
 const encodedKey = new TextEncoder().encode(process.env.SESSION_SECRET);
 
-const PROTECTED_PREFIXES = ["/dashboard", "/admin"];
+const PROTECTED_PREFIXES = ["/dashboard", "/admin", "/print"];
 const AUTH_PAGES = ["/login", "/signup"];
 
 async function readRole(request: NextRequest): Promise<string | null> {
@@ -40,5 +40,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/login", "/signup"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/print/:path*", "/login", "/signup"],
 };

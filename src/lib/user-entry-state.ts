@@ -15,3 +15,11 @@ export async function getChecklistProgressMap(userId: string): Promise<Map<strin
   for (const row of rows) map.set(row.entryId, parseCompletedIndices(row.completedItems));
   return map;
 }
+
+export async function getReviewedEntryIds(userId: string): Promise<Set<string>> {
+  const rows = await prisma.reviewedEntry.findMany({
+    where: { userId },
+    select: { entryId: true },
+  });
+  return new Set(rows.map((r) => r.entryId));
+}

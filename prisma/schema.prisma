@@ -22,6 +22,7 @@ model User {
   subscription      Subscription?
   favourites        FavouriteEntry[]
   checklistProgress ChecklistProgress[]
+  reviewedEntries   ReviewedEntry[]
 }
 
 model Subscription {
@@ -53,10 +54,12 @@ model BulletinEntry {
 
   favouritedBy      FavouriteEntry[]
   checklistProgress ChecklistProgress[]
+  reviewedBy        ReviewedEntry[]
 }
 
-// One care home account has one login, so favouriting and checklist
-// progress are tracked per account (User), not per individual staff member.
+// One care home account has one login, so favouriting, checklist progress,
+// and review status are tracked per account (User), not per individual
+// staff member.
 model FavouriteEntry {
   id        String   @id @default(cuid())
   userId    String
@@ -76,6 +79,17 @@ model ChecklistProgress {
   entry          BulletinEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   completedItems String // JSON-stringified number[] of completed checklist item indexes
   updatedAt      DateTime      @updatedAt
+
+  @@unique([userId, entryId])
+}
+
+model ReviewedEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryId   String
+  entry     BulletinEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
 
   @@unique([userId, entryId])
 }

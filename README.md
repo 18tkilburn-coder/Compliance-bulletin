@@ -78,8 +78,9 @@ The login page also shows these credentials for convenience during a demo.
 - **Admin entries list** (`/admin/entries`) — all entries, publish/unpublish,
   edit, delete.
 - **Customer dashboard** (`/dashboard`) — chronological feed of published
-  entries, filterable by impact level and topic; each entry has a detail page
-  with the full action checklist.
+  entries, filterable by impact level and topic, and searchable by title/
+  summary text (case-insensitive substring match, combinable with the other
+  filters); each entry has a detail page with the full action checklist.
 - **Favourites** (`/dashboard/favourites`) — pin/star any entry from the feed
   or detail page to pull it into a dedicated tab. One flag per account
   (`FavouriteEntry`), since each care home has a single login rather than
@@ -89,6 +90,17 @@ The login page also shows these credentials for convenience during a demo.
   feed and detail view. Progress is stored per account per entry
   (`ChecklistProgress`, as a JSON array of completed item indexes), so it
   persists across logins and devices rather than living in browser state.
+- **Mark as reviewed** — an independent per-account toggle (`ReviewedEntry`,
+  same pattern as favourites) separate from checklist progress, so a manager
+  can flag "I've dealt with this" without implying every checklist item is
+  done. Shows as a badge and a dimmed title on the feed, with an "Unreviewed
+  only" filter alongside Impact/Topic/search.
+- **Export to PDF** (`/print/[id]`) — a clean, chrome-free printable version
+  of an entry (title, source, date, impact, topics, summary, and the full
+  checklist with ticked state) for a physical inspection evidence folder.
+  Implemented as a print-friendly page + the browser's native print-to-PDF
+  rather than a PDF-generation library — simpler, and doesn't add a
+  dependency that has to keep up with Next 16 / React 19.
 - **Email digest preview** (`/dashboard/digest`) — renders the HTML email a
   subscriber would receive (rendered preview + raw HTML source). Preview
   only — nothing is actually sent in this MVP.

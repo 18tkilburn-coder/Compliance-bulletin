@@ -201,6 +201,12 @@ async function main() {
   const careCertificateEntry = createdByTitle.get(
     "Skills for Care updates Care Certificate standards and induction expectations"
   )!;
+  const infectionControlEntry = createdByTitle.get(
+    "UKHSA revises winter infection prevention and control guidance for care homes"
+  )!;
+  const ligatureEntry = createdByTitle.get(
+    "CQC issues minor clarification on ligature risk assessment documentation"
+  )!;
 
   await prisma.favouriteEntry.createMany({
     data: [
@@ -219,6 +225,18 @@ async function main() {
   });
 
   console.log("Seeded favourites and checklist progress for the demo customer.");
+
+  // Demo data for the "mark as reviewed" feature: a couple of already
+  // fully-processed entries, distinct from the favourited/in-progress ones
+  // above, so the feed shows a realistic mix of review states.
+  await prisma.reviewedEntry.createMany({
+    data: [
+      { userId: customer.id, entryId: infectionControlEntry.id },
+      { userId: customer.id, entryId: ligatureEntry.id },
+    ],
+  });
+
+  console.log("Seeded reviewed status for the demo customer.");
 }
 
 main()

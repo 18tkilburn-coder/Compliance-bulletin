@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { BulletinView } from "@/lib/bulletin-view";
 import { ImpactBadge } from "./impact-badge";
 import { FavouriteButton } from "./favourite-button";
+import { ReviewedButton } from "./reviewed-button";
+import { ReviewedBadge } from "./reviewed-badge";
 import { ProgressBadge } from "./progress-badge";
 import { topicLabel } from "@/lib/taxonomy";
 import type { ChecklistTally } from "@/lib/progress";
@@ -16,14 +18,20 @@ function formatDate(date: Date | null): string {
 export function BulletinCard({
   entry,
   isFavourited,
+  isReviewed,
   progress,
 }: {
   entry: BulletinView;
   isFavourited: boolean;
+  isReviewed: boolean;
   progress: ChecklistTally;
 }) {
   return (
-    <div className="relative rounded-lg border border-border bg-surface p-5 transition hover:border-primary/40 hover:shadow-sm">
+    <div
+      className={`relative rounded-lg border bg-surface p-5 transition hover:border-primary/40 hover:shadow-sm ${
+        isReviewed ? "border-border/60" : "border-border"
+      }`}
+    >
       <Link
         href={`/dashboard/${entry.id}`}
         className="absolute inset-0 rounded-lg"
@@ -37,12 +45,15 @@ export function BulletinCard({
             {entry.sourceName} &middot; {formatDate(entry.publishedAt)}
           </span>
         </div>
-        <div className="relative z-10">
+        <div className="relative z-10 flex items-center gap-2">
+          <ReviewedButton entryId={entry.id} isReviewed={isReviewed} />
           <FavouriteButton entryId={entry.id} isFavourited={isFavourited} />
         </div>
       </div>
 
-      <h2 className="mt-3 font-semibold text-foreground">{entry.title}</h2>
+      <h2 className={`mt-3 font-semibold ${isReviewed ? "text-muted" : "text-foreground"}`}>
+        {entry.title}
+      </h2>
       <p className="mt-2 text-sm leading-relaxed text-muted">{entry.summary}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -52,6 +63,7 @@ export function BulletinCard({
           </span>
         ))}
         <ProgressBadge done={progress.done} total={progress.total} />
+        {isReviewed && <ReviewedBadge />}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { toBulletinView } from "@/lib/bulletin-view";
 import { ImpactBadge } from "@/components/impact-badge";
 import { FavouriteButton } from "@/components/favourite-button";
+import { ReviewedButton } from "@/components/reviewed-button";
 import { ProgressBadge } from "@/components/progress-badge";
 import { ChecklistItem } from "@/components/checklist-item";
 import { topicLabel } from "@/lib/taxonomy";
@@ -34,8 +35,11 @@ export default async function BulletinDetailPage({
 
   const view = toBulletinView(entry);
 
-  const [favourite, progressRow] = await Promise.all([
+  const [favourite, reviewed, progressRow] = await Promise.all([
     prisma.favouriteEntry.findUnique({
+      where: { userId_entryId: { userId: user.id, entryId: id } },
+    }),
+    prisma.reviewedEntry.findUnique({
       where: { userId_entryId: { userId: user.id, entryId: id } },
     }),
     prisma.checklistProgress.findUnique({
@@ -48,9 +52,19 @@ export default async function BulletinDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/dashboard" className="text-sm text-muted hover:text-foreground">
-        &larr; Back to bulletin feed
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/dashboard" className="text-sm text-muted hover:text-foreground">
+          &larr; Back to bulletin feed
+        </Link>
+        <Link
+          href={`/print/${view.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-background"
+        >
+          Export to PDF
+        </Link>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -59,7 +73,10 @@ export default async function BulletinDetailPage({
             {view.sourceName} &middot; Published {formatDate(view.publishedAt)}
           </span>
         </div>
-        <FavouriteButton entryId={view.id} isFavourited={Boolean(favourite)} />
+        <div className="flex items-center gap-2">
+          <ReviewedButton entryId={view.id} isReviewed={Boolean(reviewed)} />
+          <FavouriteButton entryId={view.id} isFavourited={Boolean(favourite)} />
+        </div>
       </div>
 
       <h1 className="mt-3 text-2xl font-semibold text-foreground">{view.title}</h1>

@@ -64,6 +64,24 @@ export async function toggleFavouriteAction(formData: FormData): Promise<void> {
   revalidateEntryViews(entryId);
 }
 
+export async function toggleReviewedAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) throw new Error("Missing entry id.");
+
+  const existing = await prisma.reviewedEntry.findUnique({
+    where: { userId_entryId: { userId: user.id, entryId } },
+  });
+
+  if (existing) {
+    await prisma.reviewedEntry.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.reviewedEntry.create({ data: { userId: user.id, entryId } });
+  }
+
+  revalidateEntryViews(entryId);
+}
+
 export async function toggleChecklistItemAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const entryId = String(formData.get("entryId") ?? "");

@@ -2,13 +2,13 @@ import { prisma } from "@/lib/db";
 import { toBulletinView } from "@/lib/bulletin-view";
 import { BulletinCard } from "@/components/bulletin-card";
 import { requireUser } from "@/lib/dal";
-import { getChecklistProgressMap } from "@/lib/user-entry-state";
+import { getChecklistProgressMap, getReviewedEntryIds } from "@/lib/user-entry-state";
 import { tallyChecklist } from "@/lib/progress";
 
 export default async function FavouritesPage() {
   const user = await requireUser();
 
-  const [entries, progressMap] = await Promise.all([
+  const [entries, progressMap, reviewedIds] = await Promise.all([
     prisma.bulletinEntry.findMany({
       where: {
         status: "PUBLISHED",
@@ -17,6 +17,7 @@ export default async function FavouritesPage() {
       orderBy: { publishedAt: "desc" },
     }),
     getChecklistProgressMap(user.id),
+    getReviewedEntryIds(user.id),
   ]);
 
   const views = entries.map(toBulletinView);
@@ -45,6 +46,7 @@ export default async function FavouritesPage() {
               key={entry.id}
               entry={entry}
               isFavourited
+              isReviewed={reviewedIds.has(entry.id)}
               progress={tallyChecklist(entry.actionChecklist.length, progressMap.get(entry.id) ?? [])}
             />
           ))}
