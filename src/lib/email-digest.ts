@@ -89,7 +89,7 @@ export function buildDigestHtml(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Compliance Bulletin digest</title>
+    <title>Regulation Radar digest</title>
   </head>
   <body style="margin:0; padding:0; background:#f6f8f9; font-family:Arial, Helvetica, sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f8f9; padding:24px 0;">
@@ -101,8 +101,8 @@ export function buildDigestHtml(
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td>
-                      <span style="display:inline-block; width:28px; height:28px; background:#103a53; color:#ffffff; border-radius:6px; font-size:12px; font-weight:700; text-align:center; line-height:28px;">CI</span>
-                      <span style="color:#1c2b36; font-size:15px; font-weight:600; margin-left:8px;">Compliance Bulletin</span>
+                      <span style="display:inline-block; width:28px; height:28px; background:#103a53; color:#ffffff; border-radius:6px; font-size:12px; font-weight:700; text-align:center; line-height:28px;">RR</span>
+                      <span style="color:#1c2b36; font-size:15px; font-weight:600; margin-left:8px;">Regulation Radar</span>
                     </td>
                   </tr>
                 </table>
@@ -127,7 +127,7 @@ export function buildDigestHtml(
             <tr>
               <td style="padding:20px 28px 28px 28px;">
                 <p style="margin:0; color:#5b6b76; font-size:12px; line-height:18px;">
-                  You&rsquo;re receiving this digest because your Compliance Bulletin subscription is active.
+                  You&rsquo;re receiving this digest because your Regulation Radar subscription is active.
                   This is a preview only — no email has been sent.
                 </p>
               </td>

@@ -1,4 +1,4 @@
-# CQC Compliance Intelligence Bulletin
+# Regulation Radar
 
 An MVP for a SaaS product that helps UK care home operators stay ahead of CQC
 regulatory changes. This build prioritises the two parts worth demoing to real

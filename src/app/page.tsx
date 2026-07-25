@@ -126,7 +126,7 @@ export default function Home() {
                 </ul>
               </div>
               <div className="rounded-lg border border-accent/30 bg-surface p-6">
-                <p className="text-sm font-semibold text-accent">Compliance Bulletin gives you</p>
+                <p className="text-sm font-semibold text-accent">Regulation Radar gives you</p>
                 <ul className="mt-3 space-y-2 text-sm text-foreground">
                   <li>A plain-English summary of what changed</li>
                   <li>An impact score, so you know what to act on first</li>

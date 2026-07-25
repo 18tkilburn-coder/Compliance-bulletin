@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -49,10 +50,8 @@ export default async function PrintEntryPage({
 
       <header className="mb-8 flex items-center justify-between border-b border-border pb-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-white">
-            CI
-          </span>
-          <span className="text-sm font-semibold text-foreground">Compliance Bulletin</span>
+          <Image src="/logo.png" alt="" width={28} height={28} className="h-7 w-7 shrink-0" />
+          <span className="text-sm font-semibold text-foreground">Regulation Radar</span>
         </div>
         <span className="text-xs text-muted">
           Inspection evidence record &middot; printed{" "}

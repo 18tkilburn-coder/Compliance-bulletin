@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Compliance Bulletin — Regulatory Intelligence for Care Homes",
+  title: "Regulation Radar — Regulatory Intelligence for Care Homes",
   description:
     "Plain-English interpretation of CQC, Skills for Care and government updates, scored by impact and turned into action checklists for care home managers.",
 };
