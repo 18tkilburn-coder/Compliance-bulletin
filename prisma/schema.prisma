@@ -1,0 +1,95 @@
+// CQC Compliance Intelligence Bulletin — data model
+// SQLite has no native enum/array support, so enum-like fields are plain
+// strings validated against TS union types in src/lib/types.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("CUSTOMER") // CUSTOMER | ADMIN
+  createdAt    DateTime @default(now())
+
+  subscription      Subscription?
+  favourites        FavouriteEntry[]
+  checklistProgress ChecklistProgress[]
+  reviewedEntries   ReviewedEntry[]
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  careHomeName  String
+  tier          String // SOLO | SMALL_GROUP | MULTI_SITE
+  billingStatus String   @default("TRIALING") // TRIALING | ACTIVE | PAST_DUE | CANCELED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model BulletinEntry {
+  id                  String    @id @default(cuid())
+  title               String
+  sourceName          String
+  sourceUrl           String
+  rawText             String
+  summary             String
+  impactLevel         String // HIGH | MEDIUM | LOW
+  topics              String // comma-separated topic slugs
+  regulatedActivities String // comma-separated
+  actionChecklist     String // JSON-stringified string[]
+  status              String    @default("DRAFT") // DRAFT | PUBLISHED
+  publishedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  favouritedBy      FavouriteEntry[]
+  checklistProgress ChecklistProgress[]
+  reviewedBy        ReviewedEntry[]
+}
+
+// One care home account has one login, so favouriting, checklist progress,
+// and review status are tracked per account (User), not per individual
+// staff member.
+model FavouriteEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryId   String
+  entry     BulletinEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([userId, entryId])
+}
+
+model ChecklistProgress {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryId        String
+  entry          BulletinEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  completedItems String // JSON-stringified number[] of completed checklist item indexes
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([userId, entryId])
+}
+
+model ReviewedEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryId   String
+  entry     BulletinEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([userId, entryId])
+}

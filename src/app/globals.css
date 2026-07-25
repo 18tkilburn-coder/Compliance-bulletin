@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f8f9;
+  --surface: #ffffff;
+  --foreground: #1c2b36;
+  --muted: #5b6b76;
+  --border: #dde4e8;
+  --primary: #103a53;
+  --primary-hover: #0b2c40;
+  --accent: #0f7a72;
+  --accent-hover: #0b5e58;
+
+  --impact-high-fg: #9a2515;
+  --impact-high-bg: #fbeae7;
+  --impact-high-border: #eec3ba;
+  --impact-medium-fg: #8a5a12;
+  --impact-medium-bg: #fbf1e2;
+  --impact-medium-border: #ecd8ae;
+  --impact-low-fg: #276e4d;
+  --impact-low-bg: #e8f3ec;
+  --impact-low-border: #bfdfcc;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.impact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border-width: 1px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@media print {
+  @page {
+    margin: 1.5cm;
+  }
+}
+
+.impact-HIGH {
+  color: var(--impact-high-fg);
+  background: var(--impact-high-bg);
+  border-color: var(--impact-high-border);
+}
+
+.impact-MEDIUM {
+  color: var(--impact-medium-fg);
+  background: var(--impact-medium-bg);
+  border-color: var(--impact-medium-border);
+}
+
+.impact-LOW {
+  color: var(--impact-low-fg);
+  background: var(--impact-low-bg);
+  border-color: var(--impact-low-border);
+}
