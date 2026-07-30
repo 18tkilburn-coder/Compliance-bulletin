@@ -35,10 +35,7 @@ function renderPutawayScreen(root) {
 
         <div class="field">
           <label>Location</label>
-          <div class="field-row">
-            <div class="field searchable-select" id="location-select-wrap"></div>
-            <button type="button" class="btn btn-scan" id="scan-location-btn">Scan location QR</button>
-          </div>
+          <div class="searchable-select" id="location-select-wrap"></div>
         </div>
 
         <div class="field">
@@ -203,19 +200,6 @@ function renderPutawayScreen(root) {
     document.getElementById('batch-code').value = randomBatchCode();
     document.getElementById('date-logged').value = todayISO();
     showToast('Barcode scanned (simulated)');
-  });
-
-  // Simulates scanning a location QR code by picking a random unoccupied bay.
-  // Real build: replace with camera-based QR scanning.
-  document.getElementById('scan-location-btn').addEventListener('click', () => {
-    const unoccupied = Store.getUnoccupiedLocations();
-    if (!unoccupied.length) {
-      showToast('No unoccupied locations available');
-      return;
-    }
-    selectedLocationCode = randomChoice(unoccupied);
-    renderLocationField();
-    showToast(`Scanned location ${selectedLocationCode} (simulated)`);
   });
 
   document.getElementById('putaway-form').addEventListener('submit', (e) => {

@@ -4,7 +4,7 @@ A clickable demo prototype for tracking stock by warehouse location. Built as
 a static single-page app with no backend — data is stored in the browser's
 `localStorage` and pre-seeded with sample products and stock on first load.
 
-Barcode/QR scanning is simulated (see the in-app banner and the code comments
+Barcode scanning is simulated (see the in-app banner and the code comments
 in `js/screens/putaway.js`) — a real build would use the device camera.
 
 ## Running it

@@ -124,15 +124,6 @@ const Store = (() => {
     return getStockEntries().filter((e) => e.status !== 'Removed');
   }
 
-  function getOccupiedLocationCodes() {
-    return new Set(getActiveEntries().map((e) => e.locationCode));
-  }
-
-  function getUnoccupiedLocations() {
-    const occupied = getOccupiedLocationCodes();
-    return getLocations().filter((code) => !occupied.has(code));
-  }
-
   // Returns location rows enriched with occupancy status + a summary of contents.
   function getLocationOverview() {
     const products = getProducts();
@@ -183,7 +174,6 @@ const Store = (() => {
     findLocations,
     getStockEntries,
     addStockEntry,
-    getUnoccupiedLocations,
     getLocationOverview,
     searchStock,
   };
