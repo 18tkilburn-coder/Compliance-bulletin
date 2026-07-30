@@ -1,16 +1,28 @@
 :root {
-  --color-bg: #f4f6f5;
-  --color-surface: #ffffff;
-  --color-border: #dde3e1;
-  --color-text: #1c2621;
-  --color-muted: #667169;
-  --color-primary: #0f7a5c;
-  --color-primary-dark: #0b5d45;
-  --color-primary-light: #e4f4ee;
-  --color-danger: #c0392b;
-  --color-warning: #b8860b;
+  /* per4m brand palette — swap --color-orange for the exact brand hex once confirmed. */
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-dark-grey: #2a2a2a;
+  --color-orange: #f57a1f;
+
+  /* Derived surface/text tones built from the palette above. */
+  --color-bg: #f2f2f2;
+  --color-surface: var(--color-white);
+  --color-border: #d8d8d8;
+  --color-text: var(--color-black);
+  --color-muted: #6b6b6b;
+  --color-grey-light: #e9e9e9;
+  --color-grey-mid: #9a9a9a;
+  --color-orange-light: #fdeadb;
+  --color-orange-text: #7a3c0a;
+
+  --font-heading: "Arial Narrow", "Helvetica Neue Condensed", Oswald, Montserrat, Inter,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+
   --radius: 10px;
-  --shadow: 0 1px 3px rgba(16, 24, 21, 0.08), 0 1px 2px rgba(16, 24, 21, 0.06);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -23,15 +35,19 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   background: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
 }
 
+h1, h2, h3, .brand-mark, .tab-btn, .btn, .card h2 {
+  font-family: var(--font-heading);
+}
+
 .app-header {
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-black);
+  border-bottom: 3px solid var(--color-orange);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -41,19 +57,26 @@ body {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 14px 16px 4px;
+  padding: 16px 16px 6px;
 }
 
 .brand-mark {
   font-weight: 800;
-  font-size: 1.3rem;
-  letter-spacing: 0.02em;
-  color: var(--color-primary-dark);
+  font-size: 1.35rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-white);
+}
+
+.brand-accent {
+  color: var(--color-orange);
+  margin-left: 8px;
 }
 
 .brand-sub {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+  font-size: 0.75rem;
+  color: var(--color-grey-mid);
+  letter-spacing: 0.02em;
 }
 
 .tabs {
@@ -67,33 +90,43 @@ body {
   appearance: none;
   border: none;
   background: transparent;
-  color: var(--color-muted);
-  font-size: 0.92rem;
-  font-weight: 600;
+  color: var(--color-grey-mid);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   padding: 10px 14px;
-  border-radius: 8px 8px 0 0;
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
   white-space: nowrap;
   border-bottom: 3px solid transparent;
 }
 
 .tab-btn:hover {
-  background: var(--color-primary-light);
-  color: var(--color-primary-dark);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-white);
 }
 
 .tab-btn.active {
-  color: var(--color-primary-dark);
-  border-bottom-color: var(--color-primary);
+  color: var(--color-orange);
+  border-bottom-color: var(--color-orange);
 }
 
 .prototype-banner {
-  background: #fff6e0;
-  color: #7a5b00;
-  border-bottom: 1px solid #f0deA0;
-  font-size: 0.8rem;
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  border-bottom: 1px solid #1a1a1a;
+  font-size: 0.78rem;
   padding: 8px 16px;
   text-align: center;
+}
+
+.prototype-banner::before {
+  content: "PROTOTYPE";
+  color: var(--color-orange);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin-right: 8px;
 }
 
 .screen-root {
@@ -106,6 +139,7 @@ body {
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-dark-grey);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 18px;
@@ -114,7 +148,11 @@ body {
 
 .card h2 {
   margin-top: 0;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-black);
 }
 
 .field {
@@ -124,8 +162,10 @@ body {
 
 .field label {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--color-muted);
   margin-bottom: 6px;
 }
@@ -148,6 +188,7 @@ select {
   width: 100%;
   padding: 10px 12px;
   font-size: 0.95rem;
+  font-family: var(--font-body);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface);
@@ -155,41 +196,46 @@ select {
 }
 
 input:focus, select:focus {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-orange);
   outline-offset: 1px;
 }
 
 .btn {
   appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
+  border: 2px solid var(--color-dark-grey);
+  background: var(--color-white);
+  color: var(--color-dark-grey);
   padding: 10px 14px;
   border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .btn:hover {
-  background: var(--color-bg);
+  background: var(--color-dark-grey);
+  color: var(--color-white);
 }
 
 .btn-primary {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
+  background: var(--color-orange);
+  border-color: var(--color-orange);
+  color: var(--color-black);
 }
 
 .btn-primary:hover {
-  background: var(--color-primary-dark);
+  background: #d9670f;
+  border-color: #d9670f;
+  color: var(--color-black);
 }
 
 .btn-block {
   width: 100%;
-  padding: 12px;
-  font-size: 1rem;
+  padding: 13px;
+  font-size: 0.95rem;
 }
 
 .btn-scan {
@@ -213,10 +259,11 @@ input:focus, select:focus {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border: 1px solid var(--color-primary);
-  background: var(--color-primary-light);
+  border: 2px solid var(--color-dark-grey);
+  background: var(--color-grey-light);
   border-radius: 8px;
   font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .searchable-select .selected-chip button {
@@ -224,7 +271,7 @@ input:focus, select:focus {
   background: transparent;
   color: var(--color-muted);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.1rem;
   line-height: 1;
   padding: 2px 6px;
 }
@@ -255,11 +302,11 @@ input:focus, select:focus {
 
 .dropdown-item:hover,
 .dropdown-item.highlighted {
-  background: var(--color-primary-light);
+  background: var(--color-grey-light);
 }
 
 .dropdown-item .item-title {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.9rem;
 }
 
@@ -269,8 +316,15 @@ input:focus, select:focus {
 }
 
 .dropdown-item.create-new {
-  color: var(--color-primary-dark);
-  font-weight: 600;
+  color: var(--color-orange-text);
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.dropdown-item.create-new:hover {
+  background: var(--color-orange-light);
 }
 
 .dropdown-empty {
@@ -280,8 +334,8 @@ input:focus, select:focus {
 }
 
 .inline-form {
-  border: 1px dashed var(--color-primary);
-  background: var(--color-primary-light);
+  border: 2px dashed var(--color-orange);
+  background: var(--color-orange-light);
   border-radius: 8px;
   padding: 12px;
   margin-top: 8px;
@@ -289,7 +343,11 @@ input:focus, select:focus {
 
 .inline-form h3 {
   margin: 0 0 10px;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-dark-grey);
 }
 
 .inline-form-actions {
@@ -316,7 +374,7 @@ input:focus, select:focus {
 }
 
 .result-main .product-name {
-  font-weight: 700;
+  font-weight: 800;
   font-size: 0.95rem;
 }
 
@@ -333,48 +391,48 @@ input:focus, select:focus {
 
 .location-code-pill {
   display: inline-block;
-  background: var(--color-primary-light);
-  color: var(--color-primary-dark);
-  font-weight: 700;
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  font-weight: 800;
   font-size: 0.85rem;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 6px;
+  letter-spacing: 0.02em;
 }
 
 .status-badge {
   display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.7rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  padding: 2px 9px;
   border-radius: 100px;
   margin-top: 4px;
 }
 
-.status-in-stock {
-  background: #e4f4ee;
-  color: var(--color-primary-dark);
+.status-in-stock,
+.status-occupied {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
 }
 
 .status-partially-removed {
-  background: #fdf1de;
-  color: var(--color-warning);
+  background: var(--color-orange-light);
+  color: var(--color-orange-text);
+  border: 1px solid var(--color-orange);
 }
 
 .status-removed {
-  background: #f3e6e4;
-  color: var(--color-danger);
-}
-
-.status-occupied {
-  background: #e4f4ee;
-  color: var(--color-primary-dark);
+  background: var(--color-white);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
 }
 
 .status-empty {
-  background: #eceeed;
+  background: var(--color-white);
   color: var(--color-muted);
+  border: 1px solid var(--color-dark-grey);
 }
 
 .empty-state {
@@ -393,6 +451,7 @@ input:focus, select:focus {
 .location-row {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-dark-grey);
   border-radius: var(--radius);
   padding: 12px 14px;
   display: flex;
@@ -402,13 +461,15 @@ input:focus, select:focus {
 }
 
 .location-row.empty {
-  opacity: 0.7;
+  border-left-color: var(--color-border);
+  opacity: 0.75;
 }
 
 .location-code {
   font-weight: 800;
   font-size: 1rem;
-  color: var(--color-primary-dark);
+  letter-spacing: 0.02em;
+  color: var(--color-black);
   min-width: 54px;
 }
 
@@ -436,11 +497,12 @@ input:focus, select:focus {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--color-primary-dark);
-  color: #fff;
-  padding: 12px 18px;
+  background: var(--color-orange);
+  color: var(--color-black);
+  padding: 12px 20px;
   border-radius: 8px;
   font-size: 0.9rem;
+  font-weight: 700;
   box-shadow: var(--shadow);
   z-index: 100;
 }
