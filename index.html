@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>per4m | Warehouse Location Tracker</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark">per4m</span>
+      <span class="brand-sub">Warehouse Location Tracker</span>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn" data-screen="putaway">Put-Away</button>
+      <button class="tab-btn" data-screen="search">Search</button>
+      <button class="tab-btn" data-screen="locations">All Locations</button>
+    </nav>
+  </header>
+
+  <div class="prototype-banner">
+    Prototype &mdash; scanning is simulated for this demo. The final build will use live camera barcode/QR scanning.
+  </div>
+
+  <main id="screen-root" class="screen-root"></main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/screens/putaway.js"></script>
+  <script src="js/screens/search.js"></script>
+  <script src="js/screens/locations.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
