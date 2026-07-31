@@ -33,7 +33,9 @@ function renderLocationEntriesList(loc) {
         <div class="entry-list-item" data-entry-id="${escapeHtml(e.id)}" role="button" tabindex="0">
           <div class="entry-list-main">
             <div class="entry-list-name">${escapeHtml(e.product ? e.product.name : 'Unknown product')}</div>
-            <div class="entry-list-meta">Batch ${escapeHtml(e.batchCode)} &middot; Qty ${escapeHtml(String(e.quantity))}</div>
+            <div class="entry-list-meta">Batch ${e.batchCode ? escapeHtml(e.batchCode) : '&mdash;'} &middot; Qty ${escapeHtml(
+            String(e.quantity)
+          )}</div>
           </div>
           <span class="status-badge ${formatStatusClass(e.status)}">${escapeHtml(e.status)}</span>
         </div>
@@ -86,11 +88,11 @@ function renderEntryDetail(entry) {
       </div>
       <div class="detail-field">
         <span class="detail-label">Batch code</span>
-        <span class="detail-value">${escapeHtml(entry.batchCode)}</span>
+        <span class="detail-value">${entry.batchCode ? escapeHtml(entry.batchCode) : '—'}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">Best before</span>
-        <span class="detail-value">${escapeHtml(entry.bestBefore)}</span>
+        <span class="detail-value">${entry.bestBefore ? escapeHtml(entry.bestBefore) : '—'}</span>
       </div>
       <div class="detail-field">
         <span class="detail-label">Quantity</span>
@@ -290,9 +292,9 @@ function wireRemoveCompletely(entry) {
     section.innerHTML = `
       <h3>Remove completely</h3>
       <div class="confirm-prompt">
-        <p class="confirm-message">Remove ${escapeHtml(productName)} (batch ${escapeHtml(entry.batchCode)}) from ${escapeHtml(
-      entry.locationCode
-    )}? This cannot be undone.</p>
+        <p class="confirm-message">Remove ${escapeHtml(productName)}${
+      entry.batchCode ? ` (batch ${escapeHtml(entry.batchCode)})` : ''
+    } from ${escapeHtml(entry.locationCode)}? This cannot be undone.</p>
         <div class="confirm-actions">
           <button type="button" class="btn" id="cancel-remove-all">Cancel</button>
           <button type="button" class="btn btn-danger" id="confirm-remove-all">Yes, remove</button>

@@ -38,9 +38,9 @@ function renderLocationRow(loc) {
           <div class="contents-line">${escapeHtml(e.product ? e.product.name : 'Unknown product')} &mdash; ${escapeHtml(
         String(e.quantity)
       )} units</div>
-          <div class="contents-sub">Batch ${escapeHtml(e.batchCode)} &middot; Best Before ${escapeHtml(
-        e.bestBefore
-      )} &middot; ${escapeHtml(e.status)}</div>
+          <div class="contents-sub">Batch ${e.batchCode ? escapeHtml(e.batchCode) : '&mdash;'} &middot; Best Before ${
+        e.bestBefore ? escapeHtml(e.bestBefore) : '&mdash;'
+      } &middot; ${escapeHtml(e.status)}</div>
         </div>
       `
     )

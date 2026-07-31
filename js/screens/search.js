@@ -47,10 +47,12 @@ function renderSearchScreen(root) {
       <div class="result-item" data-entry-id="${escapeHtml(r.id)}" role="button" tabindex="0">
         <div class="result-main">
           <div class="product-name">${escapeHtml(r.product.name)}</div>
-          <div class="meta-line">Batch ${escapeHtml(r.batchCode)}${
+          <div class="meta-line">Batch ${r.batchCode ? escapeHtml(r.batchCode) : '&mdash;'}${
           r.product.sku ? ` &middot; SKU ${escapeHtml(r.product.sku)}` : ''
         }</div>
-          <div class="meta-line">Best Before ${escapeHtml(r.bestBefore)} &middot; Qty ${escapeHtml(String(r.quantity))}</div>
+          <div class="meta-line">Best Before ${
+            r.bestBefore ? escapeHtml(r.bestBefore) : '&mdash;'
+          } &middot; Qty ${escapeHtml(String(r.quantity))}</div>
         </div>
         <div class="result-loc">
           <div class="location-code-pill">${escapeHtml(r.locationCode)}</div>

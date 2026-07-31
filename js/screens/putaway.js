@@ -278,40 +278,28 @@ function renderPutawayScreen(root) {
   document.getElementById('putaway-form').addEventListener('submit', (e) => {
     e.preventDefault();
 
+    // Only Product and Location are required — every other field is optional.
     if (!selectedProduct) {
       showToast('Please select a product');
-      return;
-    }
-    const batchCode = document.getElementById('batch-code').value.trim();
-    if (!batchCode) {
-      showToast('Please enter a batch code');
-      return;
-    }
-    const bestBeforeMonth = document.getElementById('best-before-month').value;
-    const bestBeforeYear = document.getElementById('best-before-year').value;
-    if (!bestBeforeMonth || !bestBeforeYear) {
-      showToast('Please select a best-before month and year');
-      return;
-    }
-    const quantity = Number(document.getElementById('quantity').value);
-    if (!quantity || quantity <= 0) {
-      showToast('Please enter a valid quantity');
       return;
     }
     if (!selectedLocationCode) {
       showToast('Please select a location');
       return;
     }
+
+    const batchCode = document.getElementById('batch-code').value.trim();
+    const bestBeforeMonth = document.getElementById('best-before-month').value;
+    const bestBeforeYear = document.getElementById('best-before-year').value;
+    const bestBefore = bestBeforeMonth && bestBeforeYear ? formatBestBefore(bestBeforeMonth, bestBeforeYear) : '';
+    const quantityRaw = document.getElementById('quantity').value;
+    const quantity = quantityRaw ? Number(quantityRaw) : 0;
     const loggedBy = document.getElementById('logged-by').value;
-    if (!loggedBy) {
-      showToast('Please select who is logging this');
-      return;
-    }
 
     Store.addStockEntry({
       productId: selectedProduct.id,
       batchCode,
-      bestBefore: formatBestBefore(bestBeforeMonth, bestBeforeYear),
+      bestBefore,
       quantity,
       locationCode: selectedLocationCode,
       loggedBy,
