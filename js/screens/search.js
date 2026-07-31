@@ -38,7 +38,7 @@ function renderSearchScreen(root) {
           <div class="meta-line">Batch ${escapeHtml(r.batchCode)}${
           r.product.sku ? ` &middot; SKU ${escapeHtml(r.product.sku)}` : ''
         }</div>
-          <div class="meta-line">Qty ${escapeHtml(String(r.quantity))} &middot; Logged ${escapeHtml(r.dateLogged)}</div>
+          <div class="meta-line">Best Before ${escapeHtml(r.bestBefore)} &middot; Qty ${escapeHtml(String(r.quantity))}</div>
         </div>
         <div class="result-loc">
           <div class="location-code-pill">${escapeHtml(r.locationCode)}</div>

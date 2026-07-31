@@ -24,8 +24,26 @@ function renderPutawayScreen(root) {
         </div>
 
         <div class="field">
-          <label>Date</label>
-          <input type="date" id="date-logged" />
+          <label>Best before</label>
+          <div class="field-row">
+            <div class="field">
+              <select id="best-before-month">
+                <option value="">Month</option>
+                ${bestBeforeMonthOptions()
+                  .map((m) => `<option value="${m}">${m}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <div class="field">
+              <select id="best-before-year">
+                <option value="">Year</option>
+                ${bestBeforeYearOptions()
+                  .map((y) => `<option value="${y}">${y}</option>`)
+                  .join('')}
+              </select>
+            </div>
+          </div>
+          <div class="helper-text">Displayed as MM/YY, e.g. 06/28 for June 2028.</div>
         </div>
 
         <div class="field">
@@ -50,8 +68,6 @@ function renderPutawayScreen(root) {
       </form>
     </div>
   `;
-
-  document.getElementById('date-logged').value = todayISO();
 
   renderProductField();
   renderLocationField();
@@ -194,11 +210,14 @@ function renderPutawayScreen(root) {
     });
   }
 
-  // Simulates a barcode scan capturing the product's batch code + date.
-  // Real build: replace with camera-based barcode scanning (e.g. via a device camera API).
+  // Simulates a barcode scan capturing the batch code + the best-before date
+  // printed on the pack. Real build: replace with camera-based barcode scanning
+  // (e.g. via a device camera API).
   document.getElementById('scan-barcode-btn').addEventListener('click', () => {
     document.getElementById('batch-code').value = randomBatchCode();
-    document.getElementById('date-logged').value = todayISO();
+    const { month, year } = randomBestBefore();
+    document.getElementById('best-before-month').value = month;
+    document.getElementById('best-before-year').value = year;
     showToast('Barcode scanned (simulated)');
   });
 
@@ -214,9 +233,10 @@ function renderPutawayScreen(root) {
       showToast('Please enter a batch code');
       return;
     }
-    const dateLogged = document.getElementById('date-logged').value;
-    if (!dateLogged) {
-      showToast('Please select a date');
+    const bestBeforeMonth = document.getElementById('best-before-month').value;
+    const bestBeforeYear = document.getElementById('best-before-year').value;
+    if (!bestBeforeMonth || !bestBeforeYear) {
+      showToast('Please select a best-before month and year');
       return;
     }
     const quantity = Number(document.getElementById('quantity').value);
@@ -237,7 +257,7 @@ function renderPutawayScreen(root) {
     Store.addStockEntry({
       productId: selectedProduct.id,
       batchCode,
-      dateLogged,
+      bestBefore: formatBestBefore(bestBeforeMonth, bestBeforeYear),
       quantity,
       locationCode: selectedLocationCode,
       loggedBy,

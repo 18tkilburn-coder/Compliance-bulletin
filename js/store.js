@@ -45,11 +45,12 @@ const Store = (() => {
     const stockEntries = chosenLocations.map((locationCode) => {
       const product = randomChoice(products);
       const [min, max] = product.qtyRange || [5, 60];
+      const { month, year } = randomBestBefore();
       return {
         id: uid('stock'),
         productId: product.id,
         batchCode: randomBatchCode(),
-        dateLogged: randomRecentDate(),
+        bestBefore: formatBestBefore(month, year),
         quantity: randomInt(min, max),
         locationCode,
         loggedBy: randomChoice(STAFF_NAMES),
@@ -109,7 +110,7 @@ const Store = (() => {
       id: uid('stock'),
       productId: entry.productId,
       batchCode: entry.batchCode.trim(),
-      dateLogged: entry.dateLogged,
+      bestBefore: entry.bestBefore,
       quantity: Number(entry.quantity),
       locationCode: entry.locationCode,
       loggedBy: entry.loggedBy,

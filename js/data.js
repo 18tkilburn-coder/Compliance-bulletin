@@ -44,16 +44,42 @@ function randomBatchCode() {
   return String(randomInt(10000, 99999));
 }
 
-// Random date within roughly -30 to +14 days of today, formatted as YYYY-MM-DD.
-function randomRecentDate() {
-  const offsetDays = randomInt(-30, 14);
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
-}
-
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Best-before month/year options for the Put-Away dropdowns: numeric months
+// 01-12, and years as the current year through +6 years (last 2 digits).
+function bestBeforeMonthOptions() {
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    months.push(String(m).padStart(2, '0'));
+  }
+  return months;
+}
+
+function bestBeforeYearOptions() {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let i = 0; i <= 6; i++) {
+    years.push(String(currentYear + i).slice(-2));
+  }
+  return years;
+}
+
+function formatBestBefore(month, year) {
+  return `${month}/${year}`;
+}
+
+// Random best-before 3-36 months out, as { month, year } (year = last 2 digits).
+function randomBestBefore() {
+  const offsetMonths = randomInt(3, 36);
+  const d = new Date();
+  d.setMonth(d.getMonth() + offsetMonths);
+  return {
+    month: String(d.getMonth() + 1).padStart(2, '0'),
+    year: String(d.getFullYear()).slice(-2),
+  };
 }
 
 function shuffle(arr) {
