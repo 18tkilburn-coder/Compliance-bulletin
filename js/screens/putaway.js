@@ -58,10 +58,7 @@ function renderPutawayScreen(root) {
 
         <div class="field">
           <label>Logged by</label>
-          <select id="logged-by">
-            <option value="">Select staff&hellip;</option>
-            ${STAFF_NAMES.map((n) => `<option value="${n}">${n}</option>`).join('')}
-          </select>
+          <div id="logged-by-wrap"></div>
         </div>
 
         <button type="submit" class="btn btn-primary btn-block">Save</button>
@@ -71,6 +68,7 @@ function renderPutawayScreen(root) {
 
   renderProductField();
   renderLocationField();
+  renderLoggedByField();
 
   function renderProductField() {
     const wrap = document.getElementById('product-select-wrap');
@@ -207,6 +205,62 @@ function renderPutawayScreen(root) {
           renderLocationField();
         },
       }));
+    });
+  }
+
+  function renderLoggedByField(preselect) {
+    const wrap = document.getElementById('logged-by-wrap');
+    const staff = Store.getStaff();
+
+    wrap.innerHTML = `
+      <select id="logged-by">
+        <option value="">Select staff&hellip;</option>
+        ${staff
+          .map(
+            (n) =>
+              `<option value="${escapeHtml(n)}"${n === preselect ? ' selected' : ''}>${escapeHtml(n)}</option>`
+          )
+          .join('')}
+        <option value="__add_person__">+ Add another person</option>
+      </select>
+      <div class="inline-form" id="new-staff-form" hidden>
+        <h3>Add staff member</h3>
+        <div class="field">
+          <label>Name (required)</label>
+          <input type="text" id="new-staff-name" />
+        </div>
+        <div class="inline-form-actions">
+          <button type="button" class="btn btn-primary" id="new-staff-save">Add person</button>
+          <button type="button" class="btn" id="new-staff-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    const select = document.getElementById('logged-by');
+    const formWrap = document.getElementById('new-staff-form');
+
+    select.addEventListener('change', () => {
+      if (select.value === '__add_person__') {
+        select.value = '';
+        formWrap.hidden = false;
+        document.getElementById('new-staff-name').focus();
+      }
+    });
+
+    document.getElementById('new-staff-save').addEventListener('click', () => {
+      const nameInput = document.getElementById('new-staff-name');
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast('Name is required');
+        return;
+      }
+      const canonicalName = Store.addStaffMember(name);
+      renderLoggedByField(canonicalName);
+      showToast(`"${canonicalName}" added`);
+    });
+
+    document.getElementById('new-staff-cancel').addEventListener('click', () => {
+      formWrap.hidden = true;
     });
   }
 

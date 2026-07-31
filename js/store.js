@@ -7,6 +7,7 @@ const Store = (() => {
     products: 'per4m_products',
     locations: 'per4m_locations',
     stockEntries: 'per4m_stockEntries',
+    staff: 'per4m_staff',
     seeded: 'per4m_seeded_v1',
   };
 
@@ -25,6 +26,9 @@ const Store = (() => {
 
   function seedIfNeeded() {
     if (localStorage.getItem(KEYS.seeded)) return;
+
+    const staff = STAFF_SEED.slice();
+    save(KEYS.staff, staff);
 
     const products = PRODUCT_SEED.map((p) => ({
       id: uid('prod'),
@@ -53,7 +57,7 @@ const Store = (() => {
         bestBefore: formatBestBefore(month, year),
         quantity: randomInt(min, max),
         locationCode,
-        loggedBy: randomChoice(STAFF_NAMES),
+        loggedBy: randomChoice(staff),
         status: 'In Stock',
       };
     });
@@ -87,6 +91,22 @@ const Store = (() => {
     return products.filter(
       (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
     );
+  }
+
+  function getStaff() {
+    return load(KEYS.staff, STAFF_SEED.slice());
+  }
+
+  // Adds a new staff name (deduped case-insensitively) and persists it for
+  // the rest of the session. Returns the canonical name to select.
+  function addStaffMember(name) {
+    const trimmed = name.trim();
+    const staff = getStaff();
+    const existing = staff.find((n) => n.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+    staff.push(trimmed);
+    save(KEYS.staff, staff);
+    return trimmed;
   }
 
   function getLocations() {
@@ -209,6 +229,8 @@ const Store = (() => {
     getProducts,
     addProduct,
     findProducts,
+    getStaff,
+    addStaffMember,
     getLocations,
     findLocations,
     getStockEntries,

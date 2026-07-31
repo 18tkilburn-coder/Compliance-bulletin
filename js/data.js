@@ -1,7 +1,7 @@
 // Seed data for the per4m warehouse prototype.
 // Everything here is placeholder/demo data used to pre-populate the local store.
 
-const STAFF_NAMES = ['Alex', 'Sam', 'Jordan', 'Chris', 'Taylor'];
+const STAFF_SEED = ['Ricky', 'Nick', 'Leighton', 'Tom'];
 
 // Quantity range is varied a bit per product "type" so the seeded data looks
 // realistic (boxes come in bigger counts than powder tubs, for example).
