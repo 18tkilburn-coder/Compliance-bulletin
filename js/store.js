@@ -125,6 +125,44 @@ const Store = (() => {
     return getStockEntries().filter((e) => e.status !== 'Removed');
   }
 
+  function getStockEntryById(id) {
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+    const entry = getStockEntries().find((e) => e.id === id);
+    if (!entry) return null;
+    return { ...entry, product: productById.get(entry.productId) || null };
+  }
+
+  function updateStockEntry(id, changes) {
+    const entries = getStockEntries();
+    const index = entries.findIndex((e) => e.id === id);
+    if (index === -1) return null;
+    entries[index] = { ...entries[index], ...changes };
+    save(KEYS.stockEntries, entries);
+    return entries[index];
+  }
+
+  function swapEntryLocation(id, newLocationCode) {
+    return updateStockEntry(id, { locationCode: newLocationCode });
+  }
+
+  // Subtracts `amount` from the entry's quantity. Reaching zero is treated
+  // as a full removal (status 'Removed'); otherwise the entry stays in place
+  // with status 'Partially Removed'.
+  function reduceEntryQuantity(id, amount) {
+    const entry = getStockEntries().find((e) => e.id === id);
+    if (!entry) return null;
+    const remaining = entry.quantity - amount;
+    if (remaining <= 0) {
+      return updateStockEntry(id, { quantity: 0, status: 'Removed' });
+    }
+    return updateStockEntry(id, { quantity: remaining, status: 'Partially Removed' });
+  }
+
+  function removeEntryCompletely(id) {
+    return updateStockEntry(id, { status: 'Removed' });
+  }
+
   // Returns location rows enriched with occupancy status + a summary of contents.
   function getLocationOverview() {
     const products = getProducts();
@@ -175,6 +213,10 @@ const Store = (() => {
     findLocations,
     getStockEntries,
     addStockEntry,
+    getStockEntryById,
+    swapEntryLocation,
+    reduceEntryQuantity,
+    removeEntryCompletely,
     getLocationOverview,
     searchStock,
   };

@@ -55,3 +55,22 @@ function wireDropdown(inputEl, listEl, renderItems) {
 
   return { refresh, close: () => { listEl.hidden = true; } };
 }
+
+// Generic modal used for the stock entry detail view.
+function openModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').hidden = false;
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').hidden = true;
+  document.getElementById('modal-content').innerHTML = '';
+}
+
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modal-overlay') closeModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});

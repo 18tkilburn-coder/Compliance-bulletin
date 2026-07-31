@@ -15,7 +15,19 @@ function renderSearchScreen(root) {
   const resultsEl = document.getElementById('search-results');
 
   input.addEventListener('input', () => renderResults(input.value));
+  resultsEl.addEventListener('click', handleResultActivate);
+  resultsEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleResultActivate(e);
+    }
+  });
   renderResults('');
+
+  function handleResultActivate(e) {
+    const item = e.target.closest('.result-item');
+    if (item) openEntryDetail(item.dataset.entryId);
+  }
 
   function renderResults(query) {
     if (!query.trim()) {
@@ -32,7 +44,7 @@ function renderSearchScreen(root) {
     resultsEl.innerHTML = results
       .map(
         (r) => `
-      <div class="result-item">
+      <div class="result-item" data-entry-id="${escapeHtml(r.id)}" role="button" tabindex="0">
         <div class="result-main">
           <div class="product-name">${escapeHtml(r.product.name)}</div>
           <div class="meta-line">Batch ${escapeHtml(r.batchCode)}${

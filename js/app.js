@@ -1,8 +1,11 @@
 // App shell: tab navigation between the three screens.
+// Exposes AppRouter.refresh() so other UI (e.g. the entry detail modal) can
+// re-render whichever screen is currently on-screen after a data change.
 
-(function initApp() {
+const AppRouter = (() => {
   const root = document.getElementById('screen-root');
   const tabButtons = document.querySelectorAll('.tab-btn');
+  let activeScreen = 'putaway';
 
   const SCREENS = {
     putaway: renderPutawayScreen,
@@ -11,6 +14,7 @@
   };
 
   function showScreen(name) {
+    activeScreen = name;
     tabButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.screen === name);
     });
@@ -22,4 +26,8 @@
   });
 
   showScreen('putaway');
+
+  return {
+    refresh: () => showScreen(activeScreen),
+  };
 })();
