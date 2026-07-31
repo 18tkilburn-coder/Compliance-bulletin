@@ -93,6 +93,41 @@ const Store = (() => {
     );
   }
 
+  // Updates a product's name/SKU in place. Stock entries only ever store a
+  // productId, so anywhere that joins against the catalogue picks up the
+  // change immediately — no need to touch existing stock entries.
+  function updateProduct(id, { name, sku }) {
+    const products = getProducts();
+    const index = products.findIndex((p) => p.id === id);
+    if (index === -1) return null;
+    products[index] = {
+      ...products[index],
+      name: name.trim(),
+      sku: (sku || '').trim(),
+    };
+    save(KEYS.products, products);
+    return products[index];
+  }
+
+  // Number of non-removed stock entries currently referencing this product —
+  // i.e. how many bays it's actually sitting in right now.
+  function getActiveEntryCountForProduct(id) {
+    return getActiveEntries().filter((e) => e.productId === id).length;
+  }
+
+  // Deletes a product only if no active stock entries reference it. Returns
+  // { deleted: true } on success, or { deleted: false, activeCount } if the
+  // product is still in use somewhere.
+  function deleteProduct(id) {
+    const activeCount = getActiveEntryCountForProduct(id);
+    if (activeCount > 0) {
+      return { deleted: false, activeCount };
+    }
+    const products = getProducts().filter((p) => p.id !== id);
+    save(KEYS.products, products);
+    return { deleted: true };
+  }
+
   function getStaff() {
     return load(KEYS.staff, STAFF_SEED.slice());
   }
@@ -229,6 +264,9 @@ const Store = (() => {
     getProducts,
     addProduct,
     findProducts,
+    updateProduct,
+    getActiveEntryCountForProduct,
+    deleteProduct,
     getStaff,
     addStaffMember,
     getLocations,

@@ -112,12 +112,20 @@ function renderPutawayScreen(root) {
     const input = document.getElementById('product-search');
     const list = document.getElementById('product-dropdown');
 
-    wireDropdown(input, list, (query) => {
+    const dropdown = wireDropdown(input, list, (query) => {
       const matches = Store.findProducts(query).slice(0, 8);
       const items = matches.map((p) => ({
-        html: `<div class="item-title">${escapeHtml(p.name)}</div>${
-          p.sku ? `<div class="item-sub">${escapeHtml(p.sku)}</div>` : ''
-        }`,
+        html: `
+          <div class="dropdown-item-row">
+            <div class="dropdown-item-text">
+              <div class="item-title">${escapeHtml(p.name)}</div>
+              ${p.sku ? `<div class="item-sub">${escapeHtml(p.sku)}</div>` : ''}
+            </div>
+            <button type="button" class="dropdown-item-edit-btn" data-keep-open data-product-id="${escapeHtml(
+              p.id
+            )}">Edit</button>
+          </div>
+        `,
         onSelect: () => {
           selectedProduct = p;
           renderProductField();
@@ -133,6 +141,16 @@ function renderPutawayScreen(root) {
         });
       }
       return items;
+    });
+
+    // Editing a product from the search results updates it in place and
+    // just refreshes this list — it doesn't select the product or touch
+    // the rest of the form.
+    list.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.dropdown-item-edit-btn');
+      if (editBtn) {
+        openProductEditModal(editBtn.dataset.productId, () => dropdown.refresh());
+      }
     });
   }
 

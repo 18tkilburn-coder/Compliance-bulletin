@@ -1,4 +1,4 @@
-// App shell: tab navigation between the three screens.
+// App shell: tab navigation between the four screens.
 // Exposes AppRouter.refresh() so other UI (e.g. the entry detail modal) can
 // re-render whichever screen is currently on-screen after a data change.
 
@@ -11,6 +11,7 @@ const AppRouter = (() => {
     putaway: renderPutawayScreen,
     search: renderSearchScreen,
     locations: renderLocationsScreen,
+    products: renderManageProductsScreen,
   };
 
   function showScreen(name) {

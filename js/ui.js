@@ -36,6 +36,14 @@ function wireDropdown(inputEl, listEl, renderItems) {
         // mousedown fires before the input's blur, so the click registers
         // before the list gets hidden.
         row.addEventListener('mousedown', (e) => {
+          // A nested control (e.g. an inline "Edit" button) can opt out of
+          // selecting the item by marking itself [data-keep-open] — the row
+          // still keeps focus (so the list doesn't close), but onSelect is
+          // skipped and the control's own click handler runs normally.
+          if (e.target.closest('[data-keep-open]')) {
+            e.preventDefault();
+            return;
+          }
           e.preventDefault();
           item.onSelect();
         });
