@@ -1,6 +1,6 @@
 // All-Locations Overview screen: a flat, glanceable list of every racking bay.
-// Clicking an occupied bay's entry opens the same stock entry detail view
-// used by the Search screen.
+// Clicking an occupied bay opens the stock entry detail view directly if it
+// holds a single entry, or a short picker list first if it holds more than one.
 
 function renderLocationsScreen(root) {
   const overview = Store.getLocationOverview();
@@ -15,17 +15,17 @@ function renderLocationsScreen(root) {
   `;
 
   const grid = document.getElementById('location-grid');
-  grid.addEventListener('click', handleEntryActivate);
+  grid.addEventListener('click', handleLocationActivate);
   grid.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      handleEntryActivate(e);
+      handleLocationActivate(e);
     }
   });
 
-  function handleEntryActivate(e) {
-    const item = e.target.closest('.location-entry');
-    if (item) openEntryDetail(item.dataset.entryId);
+  function handleLocationActivate(e) {
+    const row = e.target.closest('.location-row[data-location-code]');
+    if (row) openLocationEntries(row.dataset.locationCode);
   }
 }
 
@@ -34,7 +34,7 @@ function renderLocationRow(loc) {
   const contents = loc.entries
     .map(
       (e) => `
-        <div class="location-entry" data-entry-id="${escapeHtml(e.id)}" role="button" tabindex="0">
+        <div class="entry-summary">
           <div class="contents-line">${escapeHtml(e.product ? e.product.name : 'Unknown product')} &mdash; ${escapeHtml(
         String(e.quantity)
       )} units</div>
@@ -47,7 +47,9 @@ function renderLocationRow(loc) {
     .join('');
 
   return `
-    <div class="location-row ${isEmpty ? 'empty' : ''}">
+    <div class="location-row ${isEmpty ? 'empty' : 'clickable'}" ${
+    isEmpty ? '' : `data-location-code="${escapeHtml(loc.code)}" role="button" tabindex="0"`
+  }>
       <div class="location-code">${escapeHtml(loc.code)}</div>
       <div class="location-contents">
         ${isEmpty ? '<div class="contents-sub">No stock logged</div>' : contents}

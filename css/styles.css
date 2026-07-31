@@ -504,6 +504,16 @@ input:focus, select:focus {
   opacity: 0.75;
 }
 
+.location-row.clickable {
+  cursor: pointer;
+}
+
+.location-row.clickable:hover,
+.location-row.clickable:focus-visible {
+  background: var(--color-grey-light);
+  outline: none;
+}
+
 .location-code {
   font-weight: 800;
   font-size: 1rem;
@@ -516,21 +526,12 @@ input:focus, select:focus {
   flex: 1;
 }
 
-.location-entry {
-  cursor: pointer;
-  padding: 4px 6px;
-  margin: -4px -6px 6px;
-  border-radius: 6px;
+.entry-summary {
+  margin-bottom: 6px;
 }
 
-.location-entry:last-child {
-  margin-bottom: -4px;
-}
-
-.location-entry:hover,
-.location-entry:focus-visible {
-  background: var(--color-grey-light);
-  outline: none;
+.entry-summary:last-child {
+  margin-bottom: 0;
 }
 
 .location-contents .contents-line {
@@ -663,6 +664,63 @@ input:focus, select:focus {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--color-dark-grey);
+}
+
+.confirm-prompt {
+  background: var(--color-orange-light);
+  border: 1px solid var(--color-orange);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.confirm-message {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  color: var(--color-dark-grey);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-actions .btn {
+  flex: 1;
+}
+
+/* Location entries picker */
+.entry-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.entry-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.entry-list-item:hover,
+.entry-list-item:focus-visible {
+  background: var(--color-grey-light);
+  outline: none;
+}
+
+.entry-list-name {
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.entry-list-meta {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-top: 2px;
 }
 
 @media (min-width: 640px) {
