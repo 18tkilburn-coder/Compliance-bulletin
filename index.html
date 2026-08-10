@@ -12,22 +12,32 @@
     build must replace this with proper staff login (see js/portal.js).
   -->
   <div id="portal-gate" class="portal-gate">
+    <div class="portal-gate-rack" aria-hidden="true"></div>
     <div class="portal-gate-inner">
-      <div class="portal-gate-brand">PER4M<span class="brand-accent">WAREHOUSE</span></div>
-      <h1 class="portal-gate-title">Choose a Portal</h1>
-      <p class="portal-gate-sub">
-        Prototype note: this is a simple role selector for the demo &mdash; a real build would replace this with proper staff login.
-      </p>
+      <div class="portal-gate-mark">PER4M<span class="brand-accent">WAREHOUSE</span></div>
+      <p class="portal-gate-tagline">Stock Location Tracking System</p>
+      <p class="portal-gate-stats" id="portal-gate-stats" aria-live="polite"></p>
+
       <div class="portal-options">
         <button type="button" class="portal-card" data-portal="employee">
+          <span class="portal-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 7.5V16.5L12 21l9-4.5V7.5"/><path d="M12 12v9"/></svg>
+          </span>
           <span class="portal-card-title">Employee Portal</span>
-          <span class="portal-card-desc">Put-Away, Search, Bay Search, and All Locations.</span>
+          <span class="portal-card-desc">Log stock, search, and manage locations.</span>
         </button>
         <button type="button" class="portal-card" data-portal="manager">
+          <span class="portal-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h2"/></svg>
+          </span>
           <span class="portal-card-title">Manager Portal</span>
-          <span class="portal-card-desc">Everything employees have, plus Manage Products, Stock Take, and stock alert thresholds.</span>
+          <span class="portal-card-desc">Full access &mdash; manage stock, products, and stock takes.</span>
         </button>
       </div>
+
+      <p class="portal-gate-note">
+        Prototype note: this is a simple role selector for the demo &mdash; a real build would replace this with proper staff login.
+      </p>
     </div>
   </div>
 

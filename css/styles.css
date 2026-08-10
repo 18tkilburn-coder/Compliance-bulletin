@@ -821,95 +821,208 @@ input:focus, select:focus {
   width: 100%;
 }
 
-/* Portal gate */
+/* Portal gate — first-touch landing screen, styled with more depth/texture
+   than the rest of the (flatter, utilitarian) app since it's the one screen
+   that has to sell "per4m's warehouse system" rather than just be a tool. */
 .portal-gate {
   min-height: 100vh;
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-black);
-  padding: 32px 20px;
+  background: radial-gradient(ellipse 900px 600px at 50% 0%, #1c1c1c 0%, var(--color-black) 62%);
+  padding: 48px 20px;
 }
 
 .portal-gate[hidden] {
   display: none;
 }
 
+/* Faint horizontal rules echoing racking/shelf lines, plus a soft orange
+   glow seated behind the wordmark. Both are decorative only. */
+.portal-gate-rack {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(520px 320px at 50% 8%, rgba(245, 122, 31, 0.16), rgba(245, 122, 31, 0) 70%),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 56px
+    );
+}
+
 .portal-gate-inner {
-  max-width: 520px;
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
   width: 100%;
   text-align: center;
 }
 
-.portal-gate-brand {
+.portal-gate-mark {
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: 1.6rem;
-  letter-spacing: 0.06em;
+  font-size: clamp(1.7rem, 8.5vw, 3.4rem);
+  letter-spacing: -0.01em;
   text-transform: uppercase;
   color: var(--color-white);
-  margin-bottom: 10px;
+  line-height: 1.05;
+  margin-bottom: 12px;
 }
 
-.portal-gate-title {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 1.05rem;
+.portal-gate-mark .brand-accent {
+  color: var(--color-orange);
+  margin-left: 0.16em;
+}
+
+.portal-gate-tagline {
+  font-size: 0.78rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
   color: var(--color-grey-mid);
-  margin: 0 0 8px;
+  margin: 0 0 22px;
 }
 
-.portal-gate-sub {
-  font-size: 0.8rem;
+.portal-gate-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
   color: var(--color-grey-mid);
-  margin: 0 0 28px;
-  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 7px 16px;
+  border-radius: 100px;
+  margin: 0 0 40px;
+  min-height: 15px;
+}
+
+.portal-gate-stats .stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-orange);
+  flex-shrink: 0;
+  animation: portal-stat-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes portal-stat-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .portal-options {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .portal-card {
   appearance: none;
-  border: 2px solid var(--color-dark-grey);
-  background: var(--color-white);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid var(--color-grey-mid);
+  background: #1a1a1a;
   border-radius: var(--radius);
-  padding: 22px 20px;
+  padding: 28px 24px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  color: var(--color-white);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.portal-card-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: rgba(245, 122, 31, 0.12);
+  color: var(--color-orange);
+  margin-bottom: 2px;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.portal-card-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .portal-card:hover,
 .portal-card:focus-visible {
-  border-color: var(--color-orange);
+  border-top-color: var(--color-orange);
+  background: #232323;
   outline: none;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(245, 122, 31, 0.25);
+}
+
+.portal-card:focus-visible {
+  outline: 2px solid var(--color-orange);
+  outline-offset: 3px;
+}
+
+.portal-card:hover .portal-card-icon,
+.portal-card:focus-visible .portal-card-icon {
+  background: var(--color-orange);
+  color: var(--color-black);
+}
+
+.portal-card:active {
+  transform: translateY(-1px);
 }
 
 .portal-card-title {
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--color-black);
+  color: var(--color-white);
 }
 
 .portal-card-desc {
-  font-size: 0.82rem;
-  color: var(--color-muted);
-  line-height: 1.4;
+  font-size: 0.83rem;
+  color: var(--color-grey-mid);
+  line-height: 1.45;
+}
+
+.portal-gate-note {
+  font-size: 0.76rem;
+  color: var(--color-grey-mid);
+  opacity: 0.75;
+  margin: 30px 0 0;
+  line-height: 1.5;
 }
 
 @media (min-width: 640px) {
   .portal-options {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-card {
+    transition: none;
+  }
+
+  .portal-card:hover,
+  .portal-card:focus-visible {
+    transform: none;
+  }
+
+  .portal-gate-stats .stat-dot {
+    animation: none;
   }
 }
 

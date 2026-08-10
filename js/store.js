@@ -337,6 +337,15 @@ const Store = (() => {
       .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
   }
 
+  // Small live snapshot shown on the portal gate so it feels connected to
+  // real data rather than a static splash screen.
+  function getGateStats() {
+    return {
+      totalLocations: getAllLocationCodes().length,
+      itemsInStock: getActiveEntries().reduce((sum, e) => sum + e.quantity, 0),
+    };
+  }
+
   seedIfNeeded();
 
   return {
@@ -363,5 +372,6 @@ const Store = (() => {
     searchPickingBayStock,
     getLowStockProducts,
     getStockTakeRows,
+    getGateStats,
   };
 })();
