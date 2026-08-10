@@ -112,10 +112,15 @@ function renderPutawayScreen(root) {
     const input = document.getElementById('product-search');
     const list = document.getElementById('product-dropdown');
 
+    // Creating/editing products is a manager-only capability — employees see
+    // matches only, with no create-new or inline-edit entry points.
+    const canManageProducts = Portal.isManager();
+
     const dropdown = wireDropdown(input, list, (query) => {
       const matches = Store.findProducts(query).slice(0, 8);
       const items = matches.map((p) => ({
-        html: `
+        html: canManageProducts
+          ? `
           <div class="dropdown-item-row">
             <div class="dropdown-item-text">
               <div class="item-title">${escapeHtml(p.name)}</div>
@@ -125,7 +130,11 @@ function renderPutawayScreen(root) {
               p.id
             )}">Edit</button>
           </div>
-        `,
+        `
+          : `
+            <div class="item-title">${escapeHtml(p.name)}</div>
+            ${p.sku ? `<div class="item-sub">${escapeHtml(p.sku)}</div>` : ''}
+          `,
         onSelect: () => {
           selectedProduct = p;
           renderProductField();
@@ -133,7 +142,7 @@ function renderPutawayScreen(root) {
       }));
 
       const trimmed = query.trim();
-      if (trimmed) {
+      if (trimmed && canManageProducts) {
         items.push({
           html: `+ Create new product &ldquo;${escapeHtml(trimmed)}&rdquo;`,
           className: 'create-new',
@@ -145,7 +154,8 @@ function renderPutawayScreen(root) {
 
     // Editing a product from the search results updates it in place and
     // just refreshes this list — it doesn't select the product or touch
-    // the rest of the form.
+    // the rest of the form. (No-op for employees: no edit button is ever
+    // rendered for them to click.)
     list.addEventListener('click', (e) => {
       const editBtn = e.target.closest('.dropdown-item-edit-btn');
       if (editBtn) {
@@ -206,11 +216,7 @@ function renderPutawayScreen(root) {
 
     const input = document.getElementById('location-search');
     const list = document.getElementById('location-dropdown');
-    const occupied = new Set(
-      Store.getLocationOverview()
-        .filter((l) => l.status === 'Occupied')
-        .map((l) => l.code)
-    );
+    const occupied = Store.getOccupiedLocationCodes();
 
     wireDropdown(input, list, (query) => {
       const matches = Store.findLocations(query).slice(0, 10);

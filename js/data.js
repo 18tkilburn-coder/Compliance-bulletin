@@ -6,11 +6,11 @@ const STAFF_SEED = ['Ricky', 'Nick', 'Leighton', 'Tom'];
 // Quantity range is varied a bit per product "type" so the seeded data looks
 // realistic (boxes come in bigger counts than powder tubs, for example).
 const PRODUCT_SEED = [
-  { name: 'Banana Whey 2kg', sku: 'PWD-BW-2KG', qtyRange: [10, 40] },
+  { name: 'Banana Whey 2kg', sku: 'PWD-BW-2KG', qtyRange: [10, 40], minStock: 50 },
   { name: 'Chocolate Chip Pancakes 1.2kg', sku: 'FOOD-CCP-1.2KG', qtyRange: [10, 35] },
-  { name: 'Creatine Unflavoured 400g', sku: 'PWD-CRT-400G', qtyRange: [15, 50] },
+  { name: 'Creatine Unflavoured 400g', sku: 'PWD-CRT-400G', qtyRange: [15, 50], minStock: 150 },
   { name: 'Hydrate Raspberry Cherry 210g', sku: 'PWD-HYD-210G', qtyRange: [15, 50] },
-  { name: 'Isolate White Chocolate Hazelnut 900g', sku: 'PWD-ISO-900G', qtyRange: [10, 35] },
+  { name: 'Isolate White Chocolate Hazelnut 900g', sku: 'PWD-ISO-900G', qtyRange: [10, 35], minStock: 120 },
   { name: 'Black Lid Per4m Shakers', sku: '', qtyRange: [20, 60] },
   { name: 'Pre Watermelon Lemonade 5 Serve', sku: 'PWD-PRE-5SRV', qtyRange: [20, 60] },
   { name: 'Glycersize Powder', sku: 'PWD-GLY-BULK', qtyRange: [10, 30] },
@@ -21,13 +21,25 @@ const PRODUCT_SEED = [
 ];
 
 // Racking locations follow the pattern A0<aisle><level>, aisles 01-10, levels c/d only.
-// "a" and "b" levels are ground-level picking locations and are intentionally excluded.
 function generateLocationCodes() {
   const codes = [];
   for (let aisle = 1; aisle <= 10; aisle++) {
     const aisleNum = String(aisle).padStart(2, '0');
     codes.push(`A${aisleNum}c`);
     codes.push(`A${aisleNum}d`);
+  }
+  return codes;
+}
+
+// Floor/picking bays use the same A0<aisle><level> pattern as racking, but
+// levels a/b (ground-level picking) instead of c/d. Separate from the racking
+// system — looked up via the Bay Search screen rather than All Locations.
+function generatePickingBayCodes() {
+  const codes = [];
+  for (let aisle = 1; aisle <= 10; aisle++) {
+    const aisleNum = String(aisle).padStart(2, '0');
+    codes.push(`A${aisleNum}a`);
+    codes.push(`A${aisleNum}b`);
   }
   return codes;
 }
@@ -80,6 +92,12 @@ function randomBestBefore() {
     month: String(d.getMonth() + 1).padStart(2, '0'),
     year: String(d.getFullYear()).slice(-2),
   };
+}
+
+// Returns an epoch-ms timestamp 0-60 days in the past, so seeded entries have
+// a spread of realistic "date logged" values for the Search screen's sort.
+function randomLoggedAt() {
+  return Date.now() - randomInt(0, 60) * 86400000;
 }
 
 function shuffle(arr) {

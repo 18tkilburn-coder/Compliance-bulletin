@@ -170,11 +170,7 @@ function wireSwapLocation(entry) {
 
     const input = document.getElementById('swap-location-search');
     const list = document.getElementById('swap-location-dropdown');
-    const occupied = new Set(
-      Store.getLocationOverview()
-        .filter((l) => l.status === 'Occupied')
-        .map((l) => l.code)
-    );
+    const occupied = Store.getOccupiedLocationCodes();
 
     wireDropdown(input, list, (query) => {
       const matches = Store.findLocations(query).slice(0, 10);

@@ -6,9 +6,12 @@ const Store = (() => {
   const KEYS = {
     products: 'per4m_products',
     locations: 'per4m_locations',
+    pickingBays: 'per4m_picking_bays',
     stockEntries: 'per4m_stockEntries',
     staff: 'per4m_staff',
-    seeded: 'per4m_seeded_v1',
+    // Bumped to v2 to force a reseed that includes picking bays, product
+    // minimum stock levels, and stock entry "logged at" timestamps.
+    seeded: 'per4m_seeded_v2',
   };
 
   function load(key, fallback) {
@@ -37,16 +40,17 @@ const Store = (() => {
       createdBy: '',
       dateAdded: todayISO(),
       qtyRange: p.qtyRange,
+      minStock: p.minStock || 0,
     }));
     save(KEYS.products, products);
 
     const locationCodes = generateLocationCodes();
     save(KEYS.locations, locationCodes);
 
-    const occupiedCount = randomInt(12, 15);
-    const chosenLocations = shuffle(locationCodes).slice(0, occupiedCount);
+    const pickingBayCodes = generatePickingBayCodes();
+    save(KEYS.pickingBays, pickingBayCodes);
 
-    const stockEntries = chosenLocations.map((locationCode) => {
+    function makeEntry(locationCode) {
       const product = randomChoice(products);
       const [min, max] = product.qtyRange || [5, 60];
       const { month, year } = randomBestBefore();
@@ -59,8 +63,17 @@ const Store = (() => {
         locationCode,
         loggedBy: randomChoice(staff),
         status: 'In Stock',
+        loggedAt: randomLoggedAt(),
       };
-    });
+    }
+
+    const occupiedCount = randomInt(12, 15);
+    const chosenLocations = shuffle(locationCodes).slice(0, occupiedCount);
+
+    const pickingBayOccupiedCount = randomInt(3, 5);
+    const chosenPickingBays = shuffle(pickingBayCodes).slice(0, pickingBayOccupiedCount);
+
+    const stockEntries = [...chosenLocations.map(makeEntry), ...chosenPickingBays.map(makeEntry)];
     save(KEYS.stockEntries, stockEntries);
 
     localStorage.setItem(KEYS.seeded, 'true');
@@ -78,6 +91,7 @@ const Store = (() => {
       sku: (sku || '').trim(),
       createdBy: (createdBy || '').trim(),
       dateAdded: todayISO(),
+      minStock: 0,
     };
     products.push(product);
     save(KEYS.products, products);
@@ -93,10 +107,11 @@ const Store = (() => {
     );
   }
 
-  // Updates a product's name/SKU in place. Stock entries only ever store a
-  // productId, so anywhere that joins against the catalogue picks up the
-  // change immediately — no need to touch existing stock entries.
-  function updateProduct(id, { name, sku }) {
+  // Updates a product's name/SKU/minimum stock level in place. Stock entries
+  // only ever store a productId, so anywhere that joins against the
+  // catalogue picks up the change immediately — no need to touch existing
+  // stock entries.
+  function updateProduct(id, { name, sku, minStock }) {
     const products = getProducts();
     const index = products.findIndex((p) => p.id === id);
     if (index === -1) return null;
@@ -104,6 +119,7 @@ const Store = (() => {
       ...products[index],
       name: name.trim(),
       sku: (sku || '').trim(),
+      minStock: Number(minStock) || 0,
     };
     save(KEYS.products, products);
     return products[index];
@@ -148,11 +164,30 @@ const Store = (() => {
     return load(KEYS.locations, []);
   }
 
+  function getPickingBays() {
+    return load(KEYS.pickingBays, []);
+  }
+
+  // Racking + picking bays combined — used by any location picker (Put-Away,
+  // swap location) since picking bays are just another set of locations
+  // staff can log stock into. All Locations stays racking-only via
+  // getLocations()/getLocationOverview(); Bay Search stays picking-bay-only
+  // via getPickingBays()/searchPickingBayStock().
+  function getAllLocationCodes() {
+    return [...getLocations(), ...getPickingBays()];
+  }
+
   function findLocations(query) {
     const q = query.trim().toLowerCase();
-    const locations = getLocations();
-    if (!q) return locations;
-    return locations.filter((code) => code.toLowerCase().includes(q));
+    const codes = getAllLocationCodes();
+    if (!q) return codes;
+    return codes.filter((code) => code.toLowerCase().includes(q));
+  }
+
+  // Set of every location code (racking or picking bay) with at least one
+  // active stock entry — used to show Occupied/Empty in location pickers.
+  function getOccupiedLocationCodes() {
+    return new Set(getActiveEntries().map((e) => e.locationCode));
   }
 
   function getStockEntries() {
@@ -170,6 +205,7 @@ const Store = (() => {
       locationCode: entry.locationCode,
       loggedBy: entry.loggedBy,
       status: 'In Stock',
+      loggedAt: Date.now(),
     };
     entries.push(stockEntry);
     save(KEYS.stockEntries, entries);
@@ -258,6 +294,49 @@ const Store = (() => {
       .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
   }
 
+  // Active stock entries sitting in picking bays whose bay code matches the
+  // query — "what should currently be in this picking bay".
+  function searchPickingBayStock(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const pickingBaySet = new Set(getPickingBays());
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    return getActiveEntries()
+      .filter((e) => pickingBaySet.has(e.locationCode) && e.locationCode.toLowerCase().includes(q))
+      .map((e) => ({ ...e, product: productById.get(e.productId) || null }))
+      .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
+  }
+
+  // Products whose total active quantity (across racking + picking bays) has
+  // fallen below their configured minimum stock level. Products with no
+  // minimum set (minStock 0) are never flagged.
+  function getLowStockProducts() {
+    const products = getProducts();
+    const totalsByProduct = new Map();
+    getActiveEntries().forEach((e) => {
+      totalsByProduct.set(e.productId, (totalsByProduct.get(e.productId) || 0) + e.quantity);
+    });
+
+    return products
+      .filter((p) => p.minStock > 0)
+      .map((p) => ({ ...p, totalQuantity: totalsByProduct.get(p.id) || 0 }))
+      .filter((p) => p.totalQuantity < p.minStock);
+  }
+
+  // Full snapshot of current stock (racking + picking bays) for the Manager
+  // portal's Stock Take list.
+  function getStockTakeRows() {
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    return getActiveEntries()
+      .map((e) => ({ ...e, product: productById.get(e.productId) || null }))
+      .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
+  }
+
   seedIfNeeded();
 
   return {
@@ -270,7 +349,9 @@ const Store = (() => {
     getStaff,
     addStaffMember,
     getLocations,
+    getPickingBays,
     findLocations,
+    getOccupiedLocationCodes,
     getStockEntries,
     addStockEntry,
     getStockEntryById,
@@ -279,5 +360,8 @@ const Store = (() => {
     removeEntryCompletely,
     getLocationOverview,
     searchStock,
+    searchPickingBayStock,
+    getLowStockProducts,
+    getStockTakeRows,
   };
 })();

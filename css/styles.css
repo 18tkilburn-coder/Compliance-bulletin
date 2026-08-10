@@ -55,9 +55,38 @@ h1, h2, h3, .brand-mark, .tab-btn, .btn, .card h2 {
 
 .brand {
   display: flex;
-  align-items: baseline;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   padding: 16px 16px 6px;
+}
+
+.brand-text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.switch-portal-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: var(--color-grey-mid);
+  font-family: var(--font-heading);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.switch-portal-btn:hover {
+  background: var(--color-orange);
+  border-color: var(--color-orange);
+  color: var(--color-black);
 }
 
 .brand-mark {
@@ -792,6 +821,185 @@ input:focus, select:focus {
   width: 100%;
 }
 
+/* Portal gate */
+.portal-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-black);
+  padding: 32px 20px;
+}
+
+.portal-gate[hidden] {
+  display: none;
+}
+
+.portal-gate-inner {
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+}
+
+.portal-gate-brand {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-white);
+  margin-bottom: 10px;
+}
+
+.portal-gate-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-grey-mid);
+  margin: 0 0 8px;
+}
+
+.portal-gate-sub {
+  font-size: 0.8rem;
+  color: var(--color-grey-mid);
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+
+.portal-options {
+  display: grid;
+  gap: 14px;
+}
+
+.portal-card {
+  appearance: none;
+  border: 2px solid var(--color-dark-grey);
+  background: var(--color-white);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.portal-card:hover,
+.portal-card:focus-visible {
+  border-color: var(--color-orange);
+  outline: none;
+}
+
+.portal-card-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-black);
+}
+
+.portal-card-desc {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+@media (min-width: 640px) {
+  .portal-options {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Bay Search */
+.bay-search-intro {
+  margin-bottom: 16px;
+}
+
+/* Stock Alerts */
+.alert-list {
+  display: grid;
+  gap: 10px;
+}
+
+.alert-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-orange-light);
+  border: 1px solid var(--color-orange);
+  border-left: 4px solid var(--color-orange);
+  border-radius: var(--radius);
+}
+
+.alert-row-name {
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+
+.alert-row-sub {
+  font-size: 0.78rem;
+  color: var(--color-dark-grey);
+  margin-top: 2px;
+}
+
+.status-low-stock {
+  background: var(--color-orange);
+  color: var(--color-black);
+}
+
+/* Stock Take */
+.stock-take-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.stock-take-header .btn {
+  flex-shrink: 0;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.stock-take-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.stock-take-table th {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.stock-take-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.stock-take-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 @media (min-width: 640px) {
   .modal-overlay {
     align-items: center;
@@ -799,5 +1007,48 @@ input:focus, select:focus {
 
   .modal {
     border-radius: var(--radius);
+  }
+}
+
+/* Print (Stock Take) — plain black-on-white working document, no branding. */
+@media print {
+  .portal-gate,
+  .app-header,
+  .prototype-banner,
+  .toast,
+  .modal-overlay,
+  .stock-take-header .btn {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .screen-root {
+    max-width: none;
+    padding: 0;
+  }
+
+  .stock-take-card {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+
+  .card h2 {
+    color: #000;
+  }
+
+  .stock-take-table th {
+    background: #fff;
+    color: #000;
+    border-bottom: 2px solid #000;
+  }
+
+  .stock-take-table td {
+    color: #000;
+    border-bottom: 1px solid #ccc;
   }
 }
