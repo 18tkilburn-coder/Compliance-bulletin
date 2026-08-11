@@ -40,7 +40,6 @@ const Store = (() => {
       createdBy: '',
       dateAdded: todayISO(),
       qtyRange: p.qtyRange,
-      minStock: p.minStock || 0,
     }));
     save(KEYS.products, products);
 
@@ -91,7 +90,6 @@ const Store = (() => {
       sku: (sku || '').trim(),
       createdBy: (createdBy || '').trim(),
       dateAdded: todayISO(),
-      minStock: 0,
     };
     products.push(product);
     save(KEYS.products, products);
@@ -107,11 +105,10 @@ const Store = (() => {
     );
   }
 
-  // Updates a product's name/SKU/minimum stock level in place. Stock entries
-  // only ever store a productId, so anywhere that joins against the
-  // catalogue picks up the change immediately — no need to touch existing
-  // stock entries.
-  function updateProduct(id, { name, sku, minStock }) {
+  // Updates a product's name/SKU in place. Stock entries only ever store a
+  // productId, so anywhere that joins against the catalogue picks up the
+  // change immediately — no need to touch existing stock entries.
+  function updateProduct(id, { name, sku }) {
     const products = getProducts();
     const index = products.findIndex((p) => p.id === id);
     if (index === -1) return null;
@@ -119,7 +116,6 @@ const Store = (() => {
       ...products[index],
       name: name.trim(),
       sku: (sku || '').trim(),
-      minStock: Number(minStock) || 0,
     };
     save(KEYS.products, products);
     return products[index];
@@ -310,22 +306,6 @@ const Store = (() => {
       .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
   }
 
-  // Products whose total active quantity (across racking + picking bays) has
-  // fallen below their configured minimum stock level. Products with no
-  // minimum set (minStock 0) are never flagged.
-  function getLowStockProducts() {
-    const products = getProducts();
-    const totalsByProduct = new Map();
-    getActiveEntries().forEach((e) => {
-      totalsByProduct.set(e.productId, (totalsByProduct.get(e.productId) || 0) + e.quantity);
-    });
-
-    return products
-      .filter((p) => p.minStock > 0)
-      .map((p) => ({ ...p, totalQuantity: totalsByProduct.get(p.id) || 0 }))
-      .filter((p) => p.totalQuantity < p.minStock);
-  }
-
   // Full snapshot of current stock (racking + picking bays) for the Manager
   // portal's Stock Take list.
   function getStockTakeRows() {
@@ -370,7 +350,6 @@ const Store = (() => {
     getLocationOverview,
     searchStock,
     searchPickingBayStock,
-    getLowStockProducts,
     getStockTakeRows,
     getGateStats,
   };

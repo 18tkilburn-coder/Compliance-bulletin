@@ -6,11 +6,11 @@ const STAFF_SEED = ['Ricky', 'Nick', 'Leighton', 'Tom'];
 // Quantity range is varied a bit per product "type" so the seeded data looks
 // realistic (boxes come in bigger counts than powder tubs, for example).
 const PRODUCT_SEED = [
-  { name: 'Banana Whey 2kg', sku: 'PWD-BW-2KG', qtyRange: [10, 40], minStock: 50 },
+  { name: 'Banana Whey 2kg', sku: 'PWD-BW-2KG', qtyRange: [10, 40] },
   { name: 'Chocolate Chip Pancakes 1.2kg', sku: 'FOOD-CCP-1.2KG', qtyRange: [10, 35] },
-  { name: 'Creatine Unflavoured 400g', sku: 'PWD-CRT-400G', qtyRange: [15, 50], minStock: 150 },
+  { name: 'Creatine Unflavoured 400g', sku: 'PWD-CRT-400G', qtyRange: [15, 50] },
   { name: 'Hydrate Raspberry Cherry 210g', sku: 'PWD-HYD-210G', qtyRange: [15, 50] },
-  { name: 'Isolate White Chocolate Hazelnut 900g', sku: 'PWD-ISO-900G', qtyRange: [10, 35], minStock: 120 },
+  { name: 'Isolate White Chocolate Hazelnut 900g', sku: 'PWD-ISO-900G', qtyRange: [10, 35] },
   { name: 'Black Lid Per4m Shakers', sku: '', qtyRange: [20, 60] },
   { name: 'Pre Watermelon Lemonade 5 Serve', sku: 'PWD-PRE-5SRV', qtyRange: [20, 60] },
   { name: 'Glycersize Powder', sku: 'PWD-GLY-BULK', qtyRange: [10, 30] },

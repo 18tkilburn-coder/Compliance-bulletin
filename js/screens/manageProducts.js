@@ -30,7 +30,7 @@ function renderManageProductsScreen(root) {
             <div class="product-row-name">${escapeHtml(p.name)}</div>
             <div class="product-row-sub">${p.sku ? escapeHtml(p.sku) : 'No SKU'} &middot; ${count} active ${
           count === 1 ? 'entry' : 'entries'
-        }${p.minStock > 0 ? ` &middot; Min stock ${escapeHtml(String(p.minStock))}` : ''}</div>
+        }</div>
           </div>
           <div class="product-row-actions">
             <button type="button" class="btn btn-sm" data-action="edit" data-product-id="${escapeHtml(p.id)}">Edit</button>
@@ -118,17 +118,6 @@ function openProductEditModal(productId, onSaved) {
       <label>SKU (optional)</label>
       <input type="text" id="edit-product-sku" value="${escapeHtml(product.sku || '')}" />
     </div>
-    <div class="field">
-      <label>Minimum stock level (optional, for alerts)</label>
-      <input
-        type="number"
-        id="edit-product-min-stock"
-        min="0"
-        placeholder="e.g. 20"
-        value="${product.minStock ? escapeHtml(String(product.minStock)) : ''}"
-      />
-      <div class="helper-text">Flagged in Stock Alerts when total quantity on hand falls below this.</div>
-    </div>
     <button type="button" class="btn btn-primary btn-block" id="edit-product-save">Save changes</button>
   `);
 
@@ -141,9 +130,7 @@ function openProductEditModal(productId, onSaved) {
       return;
     }
     const sku = document.getElementById('edit-product-sku').value.trim();
-    const minStockRaw = document.getElementById('edit-product-min-stock').value;
-    const minStock = minStockRaw ? Number(minStockRaw) : 0;
-    Store.updateProduct(productId, { name, sku, minStock });
+    Store.updateProduct(productId, { name, sku });
     closeModal();
     showToast(`"${name}" updated`);
     if (onSaved) onSaved();

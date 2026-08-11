@@ -3,15 +3,14 @@
 // entry detail modal) can re-render whichever screen is currently on-screen
 // after a data change.
 
-const EMPLOYEE_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'alerts'];
-const MANAGER_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'alerts', 'products', 'stocktake'];
+const EMPLOYEE_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations'];
+const MANAGER_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'products', 'stocktake'];
 
 const TAB_LABELS = {
   putaway: 'Put-Away',
   search: 'Search',
   baysearch: 'Bay Search',
   locations: 'All Locations',
-  alerts: 'Stock Alerts',
   products: 'Manage Products',
   stocktake: 'Stock Take',
 };
@@ -21,7 +20,6 @@ const SCREENS = {
   search: renderSearchScreen,
   baysearch: renderBaySearchScreen,
   locations: renderLocationsScreen,
-  alerts: renderStockAlertsScreen,
   products: renderManageProductsScreen,
   stocktake: renderStockTakeScreen,
 };
