@@ -10,6 +10,7 @@ const Store = (() => {
     stockEntries: 'per4m_stockEntries',
     staff: 'per4m_staff',
     pendingDeliveryItems: 'per4m_pending_delivery_items',
+    deliveries: 'per4m_deliveries',
     // Bumped to v2 to force a reseed that includes picking bays, product
     // minimum stock levels, and stock entry "logged at" timestamps.
     seeded: 'per4m_seeded_v2',
@@ -357,6 +358,38 @@ const Store = (() => {
     return randomChoice(items);
   }
 
+  // Permanent history of confirmed deliveries, independent of
+  // pendingDeliveryItems — a delivery's record (and its labels) stays
+  // browsable even after every item in it has been put away and removed
+  // from the pending list.
+  function addDeliveryRecord({ filename, items }) {
+    const deliveries = load(KEYS.deliveries, []);
+    const record = {
+      id: uid('deliveryrec'),
+      filename: filename || '',
+      importedAt: Date.now(),
+      items,
+    };
+    deliveries.push(record);
+    save(KEYS.deliveries, deliveries);
+    return record;
+  }
+
+  function getDeliveryRecords() {
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+    return load(KEYS.deliveries, [])
+      .map((d) => ({
+        ...d,
+        items: d.items.map((item) => ({ ...item, product: productById.get(item.productId) || null })),
+      }))
+      .sort((a, b) => b.importedAt - a.importedAt);
+  }
+
+  function getDeliveryRecordById(id) {
+    return getDeliveryRecords().find((d) => d.id === id) || null;
+  }
+
   // Small live snapshot shown on the portal gate so it feels connected to
   // real data rather than a static splash screen.
   function getGateStats() {
@@ -396,5 +429,8 @@ const Store = (() => {
     addPendingDeliveryItems,
     removePendingDeliveryItem,
     getRandomPendingDeliveryItem,
+    addDeliveryRecord,
+    getDeliveryRecords,
+    getDeliveryRecordById,
   };
 })();

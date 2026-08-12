@@ -1,7 +1,9 @@
 // Delivery Import screen (Manager portal only): upload a delivery note,
 // review a simulated extraction of its line items, then generate printable
 // QR labels for each. Confirmed items become "pending delivery items" that
-// the Put-Away screen's "Scan QR Label" button can later match against.
+// the Put-Away screen's "Scan QR Label" button can later match against, and
+// are also saved as a permanent delivery record so past deliveries stay
+// browsable (and their labels reprintable) even after being put away.
 
 function renderDeliveryImportScreen(root) {
   let rowCounter = 0;
@@ -9,11 +11,38 @@ function renderDeliveryImportScreen(root) {
     rowCounter += 1;
     return `row_${rowCounter}`;
   }
+  let currentFilename = '';
 
   renderUploadStep();
 
+  // ----- Sub-nav shared across every step (New Delivery / Past Deliveries) -----
+
+  function subNavHtml(active) {
+    return `
+      <div class="sub-tabs">
+        <button type="button" class="sub-tab-btn${active === 'new' ? ' active' : ''}" data-subtab="new">New Delivery</button>
+        <button type="button" class="sub-tab-btn${active === 'history' ? ' active' : ''}" data-subtab="history">Past Deliveries</button>
+      </div>
+    `;
+  }
+
+  function wireSubNav() {
+    document.querySelectorAll('.sub-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.subtab === 'new') {
+          renderUploadStep();
+        } else {
+          renderPastDeliveriesList();
+        }
+      });
+    });
+  }
+
+  // ----- Step 1: Upload -----
+
   function renderUploadStep() {
     root.innerHTML = `
+      ${subNavHtml('new')}
       <div class="card">
         <h2>Delivery Import</h2>
         <p class="helper-text">
@@ -29,6 +58,7 @@ function renderDeliveryImportScreen(root) {
         <input type="file" id="delivery-file-input" accept=".pdf,.doc,.docx,image/*" hidden />
       </div>
     `;
+    wireSubNav();
 
     const dropzone = document.getElementById('upload-dropzone');
     const fileInput = document.getElementById('delivery-file-input');
@@ -53,6 +83,7 @@ function renderDeliveryImportScreen(root) {
   }
 
   function handleFileSelected(file) {
+    currentFilename = file.name;
     renderAnalysingStep(file.name);
 
     // Prototype only: no real document-processing/AI backend exists yet.
@@ -68,6 +99,7 @@ function renderDeliveryImportScreen(root) {
 
   function renderAnalysingStep(filename) {
     root.innerHTML = `
+      ${subNavHtml('new')}
       <div class="card">
         <h2>Delivery Import</h2>
         <div class="analysing-state">
@@ -76,6 +108,7 @@ function renderDeliveryImportScreen(root) {
         </div>
       </div>
     `;
+    wireSubNav();
   }
 
   function generateMockExtraction() {
@@ -97,10 +130,13 @@ function renderDeliveryImportScreen(root) {
     });
   }
 
+  // ----- Step 2: Review -----
+
   function renderReviewStep(items) {
     const products = Store.getProducts();
 
     root.innerHTML = `
+      ${subNavHtml('new')}
       <div class="card">
         <h2>Review Extracted Line Items</h2>
         <p class="helper-text">
@@ -127,6 +163,7 @@ function renderDeliveryImportScreen(root) {
         </div>
       </div>
     `;
+    wireSubNav();
 
     const tbody = document.getElementById('line-items-body');
 
@@ -219,52 +256,171 @@ function renderDeliveryImportScreen(root) {
       }
 
       const created = Store.addPendingDeliveryItems(confirmedItems);
-      renderLabelsStep(created);
+      const record = Store.addDeliveryRecord({ filename: currentFilename, items: created });
+      renderDeliveryDetail(record.id, 'new');
     });
   }
+
+  // ----- Step 3: Labels (freshly confirmed, or revisiting a past delivery) -----
 
   function buildQrPayload(product, item) {
     return [product.name, product.sku || '', item.batchCode, item.bestBefore].join('|');
   }
 
-  function renderLabelsStep(pendingItems) {
-    const products = Store.getProducts();
-    const productById = new Map(products.map((p) => [p.id, p]));
+  function labelCardHtml(item) {
+    if (!item.product) return '';
+    const payload = buildQrPayload(item.product, item);
+    const qr = qrcode(0, 'M');
+    qr.addData(payload);
+    qr.make();
+    return `
+      <div class="qr-label" data-item-id="${escapeHtml(item.id)}">
+        <label class="qr-label-select">
+          <input type="checkbox" class="qr-label-checkbox" data-item-id="${escapeHtml(item.id)}" aria-label="Select this label" />
+        </label>
+        <div class="qr-label-code">${qr.createSvgTag(4)}</div>
+        <div class="qr-label-text">${escapeHtml(String(item.quantity))} &times; ${escapeHtml(item.product.name)}</div>
+        <div class="qr-label-sub">Batch ${escapeHtml(item.batchCode)} &middot; BBD ${escapeHtml(item.bestBefore)}</div>
+      </div>
+    `;
+  }
 
-    const labelsHtml = pendingItems
-      .map((item) => {
-        const product = productById.get(item.productId);
-        if (!product) return '';
-        const payload = buildQrPayload(product, item);
-        const qr = qrcode(0, 'M');
-        qr.addData(payload);
-        qr.make();
-        return `
-          <div class="qr-label">
-            <div class="qr-label-code">${qr.createSvgTag(4)}</div>
-            <div class="qr-label-text">${escapeHtml(String(item.quantity))} &times; ${escapeHtml(product.name)}</div>
-            <div class="qr-label-sub">Batch ${escapeHtml(item.batchCode)} &middot; BBD ${escapeHtml(item.bestBefore)}</div>
-          </div>
-        `;
-      })
-      .join('');
+  function renderDeliveryDetail(deliveryId, activeSubTab) {
+    const delivery = Store.getDeliveryRecordById(deliveryId);
+    if (!delivery) {
+      renderPastDeliveriesList();
+      return;
+    }
+
+    const labelsHtml = delivery.items.map(labelCardHtml).join('');
+    const dateStr = formatDeliveryDate(delivery.importedAt);
 
     root.innerHTML = `
+      ${subNavHtml(activeSubTab)}
       <div class="card qr-label-card">
         <div class="delivery-label-header">
           <h2>QR Labels</h2>
-          <button type="button" class="btn btn-primary" id="print-labels-btn">Print Labels</button>
         </div>
         <p class="helper-text">
-          ${pendingItems.length} label${pendingItems.length === 1 ? '' : 's'} generated and added to pending delivery items.
+          ${delivery.filename ? `${escapeHtml(delivery.filename)} &middot; ` : ''}${escapeHtml(dateStr)} &middot;
+          ${delivery.items.length} label${delivery.items.length === 1 ? '' : 's'}.
           Scan one from the Put-Away screen to auto-fill Product, Batch Code, and Best Before.
         </p>
-        <div class="qr-label-grid">${labelsHtml}</div>
-      </div>
-      <button type="button" class="btn mt-sm" id="import-another-btn">Import Another Delivery</button>
-    `;
 
-    document.getElementById('print-labels-btn').addEventListener('click', () => window.print());
-    document.getElementById('import-another-btn').addEventListener('click', () => renderUploadStep());
+        <div class="label-select-toolbar">
+          <label class="select-all-toggle">
+            <input type="checkbox" id="select-all-labels" />
+            Select all
+          </label>
+          <div class="label-select-actions">
+            <button type="button" class="btn btn-sm" id="print-selected-btn" disabled>Print Selected</button>
+            <button type="button" class="btn btn-primary btn-sm" id="print-all-btn">Print All</button>
+          </div>
+        </div>
+
+        <div class="qr-label-grid" id="qr-label-grid">${labelsHtml}</div>
+      </div>
+      ${activeSubTab === 'new' ? '<button type="button" class="btn mt-sm" id="import-another-btn">Import Another Delivery</button>' : ''}
+    `;
+    wireSubNav();
+
+    const grid = document.getElementById('qr-label-grid');
+    const selectAll = document.getElementById('select-all-labels');
+    const printSelectedBtn = document.getElementById('print-selected-btn');
+    const printAllBtn = document.getElementById('print-all-btn');
+
+    function updatePrintSelectedState() {
+      const anyChecked = grid.querySelectorAll('.qr-label-checkbox:checked').length > 0;
+      printSelectedBtn.disabled = !anyChecked;
+    }
+
+    grid.querySelectorAll('.qr-label-checkbox').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        cb.closest('.qr-label').classList.toggle('selected', cb.checked);
+        updatePrintSelectedState();
+      });
+    });
+
+    selectAll.addEventListener('change', () => {
+      const checked = selectAll.checked;
+      grid.querySelectorAll('.qr-label-checkbox').forEach((cb) => {
+        cb.checked = checked;
+        cb.closest('.qr-label').classList.toggle('selected', checked);
+      });
+      updatePrintSelectedState();
+    });
+
+    printAllBtn.addEventListener('click', () => {
+      grid.classList.remove('print-selected-only');
+      window.print();
+    });
+
+    printSelectedBtn.addEventListener('click', () => {
+      if (printSelectedBtn.disabled) {
+        showToast('Select at least one label to print');
+        return;
+      }
+      grid.classList.add('print-selected-only');
+      window.print();
+    });
+
+    const importAnotherBtn = document.getElementById('import-another-btn');
+    if (importAnotherBtn) {
+      importAnotherBtn.addEventListener('click', () => renderUploadStep());
+    }
+  }
+
+  // ----- Past Deliveries -----
+
+  function formatDeliveryDate(timestamp) {
+    const d = new Date(timestamp);
+    const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    const timePart = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return `${datePart}, ${timePart}`;
+  }
+
+  function renderPastDeliveriesList() {
+    const deliveries = Store.getDeliveryRecords();
+
+    root.innerHTML = `
+      ${subNavHtml('history')}
+      <div class="card">
+        <h2>Past Deliveries</h2>
+        ${
+          deliveries.length
+            ? `<div class="delivery-history-list" id="delivery-history-list">${deliveries
+                .map(
+                  (d) => `
+                <div class="delivery-history-row" data-delivery-id="${escapeHtml(d.id)}" role="button" tabindex="0">
+                  <div class="delivery-history-main">
+                    <div class="delivery-history-filename">${escapeHtml(d.filename || 'Untitled delivery')}</div>
+                    <div class="delivery-history-meta">${escapeHtml(formatDeliveryDate(d.importedAt))}</div>
+                  </div>
+                  <div class="delivery-history-count">${d.items.length} label${d.items.length === 1 ? '' : 's'}</div>
+                </div>
+              `
+                )
+                .join('')}</div>`
+            : '<div class="empty-state">No deliveries confirmed yet. Import one from the New Delivery tab.</div>'
+        }
+      </div>
+    `;
+    wireSubNav();
+
+    const list = document.getElementById('delivery-history-list');
+    if (!list) return;
+
+    function activateRow(e) {
+      const row = e.target.closest('.delivery-history-row');
+      if (row) renderDeliveryDetail(row.dataset.deliveryId, 'history');
+    }
+
+    list.addEventListener('click', activateRow);
+    list.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activateRow(e);
+      }
+    });
   }
 }

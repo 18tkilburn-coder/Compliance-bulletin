@@ -1224,6 +1224,7 @@ input:focus, select:focus {
 }
 
 .qr-label {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1233,6 +1234,23 @@ input:focus, select:focus {
   border-radius: 8px;
   padding: 12px 10px;
   background: var(--color-white);
+}
+
+.qr-label.selected {
+  border-color: var(--color-orange);
+  box-shadow: 0 0 0 1px var(--color-orange);
+}
+
+.qr-label-select {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+.qr-label-select input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .qr-label-code svg {
@@ -1250,6 +1268,115 @@ input:focus, select:focus {
 .qr-label-sub {
   font-size: 0.7rem;
   color: var(--color-muted);
+}
+
+/* Delivery Import sub-nav + Past Deliveries + label selection toolbar */
+.sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sub-tab-btn {
+  appearance: none;
+  border: 2px solid var(--color-dark-grey);
+  background: var(--color-white);
+  color: var(--color-dark-grey);
+  padding: 8px 16px;
+  border-radius: 100px;
+  font-family: var(--font-heading);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.sub-tab-btn:hover {
+  background: var(--color-grey-light);
+}
+
+.sub-tab-btn.active {
+  background: var(--color-dark-grey);
+  border-color: var(--color-dark-grey);
+  color: var(--color-white);
+}
+
+.sub-tab-btn.active:hover {
+  background: var(--color-black);
+}
+
+.delivery-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.delivery-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.delivery-history-row:hover,
+.delivery-history-row:focus-visible {
+  background: var(--color-grey-light);
+  outline: none;
+}
+
+.delivery-history-filename {
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.delivery-history-meta {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+.delivery-history-count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.label-select-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 0;
+  margin-bottom: 4px;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.select-all-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-dark-grey);
+  cursor: pointer;
+}
+
+.select-all-toggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.label-select-actions {
+  display: flex;
+  gap: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1279,7 +1406,10 @@ input:focus, select:focus {
   .modal-overlay,
   .stock-take-header .btn,
   .delivery-label-header .btn,
-  #import-another-btn {
+  #import-another-btn,
+  .sub-tabs,
+  .label-select-toolbar,
+  .qr-label-select {
     display: none !important;
   }
 
@@ -1324,13 +1454,21 @@ input:focus, select:focus {
     gap: 10px;
   }
 
-  .qr-label {
+  .qr-label,
+  .qr-label.selected {
     border: 1px solid #000;
+    box-shadow: none;
     break-inside: avoid;
   }
 
   .qr-label-text,
   .qr-label-sub {
     color: #000;
+  }
+
+  /* "Print Selected" only shows the checked labels; "Print All" leaves
+     this class off the grid so every label prints as before. */
+  #qr-label-grid.print-selected-only .qr-label:not(.selected) {
+    display: none;
   }
 }
