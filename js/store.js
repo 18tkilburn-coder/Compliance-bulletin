@@ -358,15 +358,29 @@ const Store = (() => {
     return randomChoice(items);
   }
 
+  // Default name for a newly-confirmed delivery: the uploaded filename if
+  // one exists, otherwise a date-based fallback ("Delivery – 12 Aug 2026").
+  function defaultDeliveryName(filename) {
+    if (filename) return filename;
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = d.toLocaleDateString('en-GB', { month: 'short' });
+    const year = d.getFullYear();
+    return `Delivery – ${day} ${month} ${year}`;
+  }
+
   // Permanent history of confirmed deliveries, independent of
   // pendingDeliveryItems — a delivery's record (and its labels) stays
   // browsable even after every item in it has been put away and removed
-  // from the pending list.
+  // from the pending list. `importedAt` doubles as the "date processed"
+  // timestamp shown in the UI, since that's exactly when confirming
+  // generates the labels.
   function addDeliveryRecord({ filename, items }) {
     const deliveries = load(KEYS.deliveries, []);
     const record = {
       id: uid('deliveryrec'),
       filename: filename || '',
+      name: defaultDeliveryName(filename),
       importedAt: Date.now(),
       items,
     };
@@ -388,6 +402,25 @@ const Store = (() => {
 
   function getDeliveryRecordById(id) {
     return getDeliveryRecords().find((d) => d.id === id) || null;
+  }
+
+  function renameDeliveryRecord(id, name) {
+    const deliveries = load(KEYS.deliveries, []);
+    const index = deliveries.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+    const trimmed = name.trim();
+    deliveries[index] = { ...deliveries[index], name: trimmed || deliveries[index].name };
+    save(KEYS.deliveries, deliveries);
+    return deliveries[index];
+  }
+
+  // Removes only the historical delivery record itself. Stock already put
+  // away via labels from this delivery is a separate Stock Entry and is
+  // untouched; any not-yet-scanned pending delivery items are left alone
+  // too, since they represent physical stock that has actually arrived.
+  function deleteDeliveryRecord(id) {
+    const deliveries = load(KEYS.deliveries, []).filter((d) => d.id !== id);
+    save(KEYS.deliveries, deliveries);
   }
 
   // Small live snapshot shown on the portal gate so it feels connected to
@@ -432,5 +465,7 @@ const Store = (() => {
     addDeliveryRecord,
     getDeliveryRecords,
     getDeliveryRecordById,
+    renameDeliveryRecord,
+    deleteDeliveryRecord,
   };
 })();

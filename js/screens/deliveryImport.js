@@ -299,10 +299,16 @@ function renderDeliveryImportScreen(root) {
       ${subNavHtml(activeSubTab)}
       <div class="card qr-label-card">
         <div class="delivery-label-header">
-          <h2>QR Labels</h2>
+          <div class="delivery-name-row" id="delivery-name-row">
+            <h2 id="delivery-name-display">${escapeHtml(delivery.name)}</h2>
+            <button type="button" class="icon-btn" id="rename-delivery-btn" aria-label="Rename delivery">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+          </div>
+          <button type="button" class="btn btn-sm btn-danger" id="delete-delivery-btn">Delete</button>
         </div>
         <p class="helper-text">
-          ${delivery.filename ? `${escapeHtml(delivery.filename)} &middot; ` : ''}${escapeHtml(dateStr)} &middot;
+          Processed ${escapeHtml(dateStr)}${delivery.filename ? ` &middot; ${escapeHtml(delivery.filename)}` : ''} &middot;
           ${delivery.items.length} label${delivery.items.length === 1 ? '' : 's'}.
           Scan one from the Put-Away screen to auto-fill Product, Batch Code, and Best Before.
         </p>
@@ -323,6 +329,66 @@ function renderDeliveryImportScreen(root) {
       ${activeSubTab === 'new' ? '<button type="button" class="btn mt-sm" id="import-another-btn">Import Another Delivery</button>' : ''}
     `;
     wireSubNav();
+
+    document.getElementById('rename-delivery-btn').addEventListener('click', () => {
+      const nameRow = document.getElementById('delivery-name-row');
+      nameRow.innerHTML = `
+        <input type="text" id="delivery-name-input" value="${escapeHtml(delivery.name)}" />
+        <button type="button" class="btn btn-sm btn-primary" id="save-delivery-name-btn">Save</button>
+        <button type="button" class="btn btn-sm" id="cancel-delivery-name-btn">Cancel</button>
+      `;
+      const input = document.getElementById('delivery-name-input');
+      input.focus();
+      input.select();
+
+      function saveRename() {
+        const newName = input.value.trim();
+        if (!newName) {
+          showToast('Delivery name is required');
+          return;
+        }
+        Store.renameDeliveryRecord(deliveryId, newName);
+        showToast('Delivery renamed');
+        renderDeliveryDetail(deliveryId, activeSubTab);
+      }
+
+      document.getElementById('save-delivery-name-btn').addEventListener('click', saveRename);
+      document.getElementById('cancel-delivery-name-btn').addEventListener('click', () => {
+        renderDeliveryDetail(deliveryId, activeSubTab);
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveRename();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          renderDeliveryDetail(deliveryId, activeSubTab);
+        }
+      });
+    });
+
+    document.getElementById('delete-delivery-btn').addEventListener('click', () => {
+      const header = document.querySelector('.qr-label-card .delivery-label-header');
+      header.outerHTML = `
+        <div class="confirm-prompt delivery-delete-confirm">
+          <p class="confirm-message">Delete &ldquo;${escapeHtml(
+            delivery.name
+          )}&rdquo;? This removes its label history permanently &mdash; stock already put away from it is not affected.</p>
+          <div class="confirm-actions">
+            <button type="button" class="btn" id="cancel-delete-delivery-detail">Cancel</button>
+            <button type="button" class="btn btn-danger" id="confirm-delete-delivery-detail">Yes, delete</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('cancel-delete-delivery-detail').addEventListener('click', () => {
+        renderDeliveryDetail(deliveryId, activeSubTab);
+      });
+      document.getElementById('confirm-delete-delivery-detail').addEventListener('click', () => {
+        Store.deleteDeliveryRecord(deliveryId);
+        showToast('Delivery deleted');
+        renderPastDeliveriesList();
+      });
+    });
 
     const grid = document.getElementById('qr-label-grid');
     const selectAll = document.getElementById('select-all-labels');
@@ -393,10 +459,15 @@ function renderDeliveryImportScreen(root) {
                   (d) => `
                 <div class="delivery-history-row" data-delivery-id="${escapeHtml(d.id)}" role="button" tabindex="0">
                   <div class="delivery-history-main">
-                    <div class="delivery-history-filename">${escapeHtml(d.filename || 'Untitled delivery')}</div>
-                    <div class="delivery-history-meta">${escapeHtml(formatDeliveryDate(d.importedAt))}</div>
+                    <div class="delivery-history-filename">${escapeHtml(d.name)}</div>
+                    <div class="delivery-history-meta">Processed ${escapeHtml(formatDeliveryDate(d.importedAt))}</div>
                   </div>
-                  <div class="delivery-history-count">${d.items.length} label${d.items.length === 1 ? '' : 's'}</div>
+                  <div class="delivery-history-row-right">
+                    <div class="delivery-history-count">${d.items.length} label${d.items.length === 1 ? '' : 's'}</div>
+                    <button type="button" class="btn btn-sm btn-danger delivery-delete-btn" data-delivery-id="${escapeHtml(
+                      d.id
+                    )}" aria-label="Delete delivery">Delete</button>
+                  </div>
                 </div>
               `
                 )
@@ -410,17 +481,57 @@ function renderDeliveryImportScreen(root) {
     const list = document.getElementById('delivery-history-list');
     if (!list) return;
 
-    function activateRow(e) {
+    function handleActivate(e) {
+      const deleteBtn = e.target.closest('.delivery-delete-btn');
+      if (deleteBtn) {
+        e.stopPropagation();
+        confirmDeleteDeliveryRow(deleteBtn.dataset.deliveryId);
+        return;
+      }
       const row = e.target.closest('.delivery-history-row');
       if (row) renderDeliveryDetail(row.dataset.deliveryId, 'history');
     }
 
-    list.addEventListener('click', activateRow);
+    list.addEventListener('click', handleActivate);
     list.addEventListener('keydown', (e) => {
+      if (e.target.closest('.delivery-delete-btn')) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        activateRow(e);
+        handleActivate(e);
       }
+    });
+  }
+
+  function confirmDeleteDeliveryRow(id) {
+    const rowEl = document.querySelector(`.delivery-history-row[data-delivery-id="${id}"]`);
+    if (!rowEl) return;
+    const delivery = Store.getDeliveryRecordById(id);
+
+    rowEl.removeAttribute('role');
+    rowEl.removeAttribute('tabindex');
+    rowEl.innerHTML = `
+      <div class="confirm-prompt delivery-row-confirm">
+        <p class="confirm-message">Delete &ldquo;${escapeHtml(
+          delivery ? delivery.name : 'this delivery'
+        )}&rdquo;? This removes its label history permanently &mdash; stock already put away from it is not affected.</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn" id="cancel-delete-delivery-row">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-delete-delivery-row">Yes, delete</button>
+        </div>
+      </div>
+    `;
+    // Both buttons sit inside the delegated list's row, so their clicks
+    // would otherwise keep bubbling up to handleActivate after the list is
+    // already re-rendered — stop that before it can re-trigger navigation.
+    document.getElementById('cancel-delete-delivery-row').addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderPastDeliveriesList();
+    });
+    document.getElementById('confirm-delete-delivery-row').addEventListener('click', (e) => {
+      e.stopPropagation();
+      Store.deleteDeliveryRecord(id);
+      showToast('Delivery deleted');
+      renderPastDeliveriesList();
     });
   }
 }
