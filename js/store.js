@@ -9,6 +9,7 @@ const Store = (() => {
     pickingBays: 'per4m_picking_bays',
     stockEntries: 'per4m_stockEntries',
     staff: 'per4m_staff',
+    pendingDeliveryItems: 'per4m_pending_delivery_items',
     // Bumped to v2 to force a reseed that includes picking bays, product
     // minimum stock levels, and stock entry "logged at" timestamps.
     seeded: 'per4m_seeded_v2',
@@ -317,6 +318,45 @@ const Store = (() => {
       .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
   }
 
+  // Stock that has arrived (confirmed from a Delivery Import) but hasn't
+  // been racked yet. Items are removed once a matching Put-Away QR scan is
+  // actually saved — not just scanned — so an abandoned form doesn't lose
+  // the item.
+  function getPendingDeliveryItems() {
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+    return load(KEYS.pendingDeliveryItems, []).map((item) => ({
+      ...item,
+      product: productById.get(item.productId) || null,
+    }));
+  }
+
+  function addPendingDeliveryItems(items) {
+    const existing = load(KEYS.pendingDeliveryItems, []);
+    const newItems = items.map((item) => ({
+      id: uid('delivery'),
+      productId: item.productId,
+      batchCode: item.batchCode.trim(),
+      bestBefore: item.bestBefore,
+      quantity: Number(item.quantity),
+    }));
+    save(KEYS.pendingDeliveryItems, [...existing, ...newItems]);
+    return newItems;
+  }
+
+  function removePendingDeliveryItem(id) {
+    const existing = load(KEYS.pendingDeliveryItems, []);
+    save(KEYS.pendingDeliveryItems, existing.filter((item) => item.id !== id));
+  }
+
+  // Used by the Put-Away "Scan QR Label" simulation to pick which pending
+  // delivery item the scan "finds".
+  function getRandomPendingDeliveryItem() {
+    const items = getPendingDeliveryItems();
+    if (!items.length) return null;
+    return randomChoice(items);
+  }
+
   // Small live snapshot shown on the portal gate so it feels connected to
   // real data rather than a static splash screen.
   function getGateStats() {
@@ -352,5 +392,9 @@ const Store = (() => {
     searchPickingBayStock,
     getStockTakeRows,
     getGateStats,
+    getPendingDeliveryItems,
+    addPendingDeliveryItems,
+    removePendingDeliveryItem,
+    getRandomPendingDeliveryItem,
   };
 })();

@@ -3,6 +3,10 @@
 function renderPutawayScreen(root) {
   let selectedProduct = null;
   let selectedLocationCode = null;
+  // Set when a "Scan QR Label" click matches a pending delivery item, so the
+  // item can be cleared from the pending list on successful save (not on
+  // scan — an abandoned form shouldn't lose it).
+  let scannedPendingItemId = null;
 
   root.innerHTML = `
     <div class="card">
@@ -19,7 +23,7 @@ function renderPutawayScreen(root) {
             <div class="field">
               <input type="text" id="batch-code" placeholder="e.g. 48213" autocomplete="off" />
             </div>
-            <button type="button" class="btn btn-scan" id="scan-barcode-btn">Scan barcode</button>
+            <button type="button" class="btn btn-scan" id="scan-qr-btn">Scan QR Label</button>
           </div>
         </div>
 
@@ -84,6 +88,8 @@ function renderPutawayScreen(root) {
       `;
       document.getElementById('clear-product').addEventListener('click', () => {
         selectedProduct = null;
+        // Clearing the product invalidates any scan match against it.
+        scannedPendingItemId = null;
         renderProductField();
       });
       return;
@@ -288,15 +294,32 @@ function renderPutawayScreen(root) {
     });
   }
 
-  // Simulates a barcode scan capturing the batch code + the best-before date
-  // printed on the pack. Real build: replace with camera-based barcode scanning
-  // (e.g. via a device camera API).
-  document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+  // Simulates scanning a printed QR label (generated via Delivery Import) to
+  // auto-fill Product, Batch Code, and Best Before. If a pending delivery
+  // item exists it "finds" one of those at random; otherwise it falls back
+  // to a plain random simulation so the form still works standalone. Real
+  // build: replace with camera-based QR scanning via the device camera API.
+  document.getElementById('scan-qr-btn').addEventListener('click', () => {
+    const pendingItem = Store.getRandomPendingDeliveryItem();
+
+    if (pendingItem && pendingItem.product) {
+      selectedProduct = pendingItem.product;
+      renderProductField();
+      document.getElementById('batch-code').value = pendingItem.batchCode;
+      const [month, year] = pendingItem.bestBefore.split('/');
+      document.getElementById('best-before-month').value = month || '';
+      document.getElementById('best-before-year').value = year || '';
+      scannedPendingItemId = pendingItem.id;
+      showToast(`QR label scanned: ${pendingItem.product.name} (batch ${pendingItem.batchCode})`);
+      return;
+    }
+
     document.getElementById('batch-code').value = randomBatchCode();
     const { month, year } = randomBestBefore();
     document.getElementById('best-before-month').value = month;
     document.getElementById('best-before-year').value = year;
-    showToast('Barcode scanned (simulated)');
+    scannedPendingItemId = null;
+    showToast('QR label scanned (simulated)');
   });
 
   document.getElementById('putaway-form').addEventListener('submit', (e) => {
@@ -328,6 +351,11 @@ function renderPutawayScreen(root) {
       locationCode: selectedLocationCode,
       loggedBy,
     });
+
+    // Only clear the pending delivery item once the put-away actually saves.
+    if (scannedPendingItemId) {
+      Store.removePendingDeliveryItem(scannedPendingItemId);
+    }
 
     showToast(`Saved: ${quantity} x ${selectedProduct.name} to ${selectedLocationCode}`);
     renderPutawayScreen(root);

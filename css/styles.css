@@ -1079,6 +1079,187 @@ input:focus, select:focus {
   text-align: right;
 }
 
+/* Delivery Import */
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 36px 20px;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.drag-over {
+  border-color: var(--color-orange);
+  background: var(--color-orange-light);
+  color: var(--color-orange-text);
+}
+
+.upload-dropzone-icon {
+  color: var(--color-dark-grey);
+}
+
+.upload-dropzone:hover .upload-dropzone-icon,
+.upload-dropzone.drag-over .upload-dropzone-icon {
+  color: var(--color-orange-text);
+}
+
+.upload-dropzone-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.upload-dropzone-text {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.upload-dropzone-hint {
+  font-size: 0.76rem;
+}
+
+.analysing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 20px;
+  color: var(--color-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-orange);
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.analysing-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.line-items-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.line-items-table th {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.line-items-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.line-items-table select,
+.line-items-table input {
+  padding: 7px 8px;
+  font-size: 0.85rem;
+}
+
+.line-items-table .line-item-product {
+  min-width: 170px;
+}
+
+.line-items-table .line-item-batch {
+  min-width: 100px;
+}
+
+.line-items-table .line-item-qty {
+  min-width: 70px;
+}
+
+.line-item-bbd {
+  display: flex;
+  gap: 4px;
+}
+
+.line-item-bbd select {
+  min-width: 62px;
+}
+
+.delivery-label-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.delivery-label-header .btn {
+  flex-shrink: 0;
+}
+
+.qr-label-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.qr-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 10px;
+  background: var(--color-white);
+}
+
+.qr-label-code svg {
+  width: 100px;
+  height: 100px;
+  display: block;
+}
+
+.qr-label-text {
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--color-black);
+}
+
+.qr-label-sub {
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--color-orange);
+    opacity: 0.7;
+  }
+}
+
 @media (min-width: 640px) {
   .modal-overlay {
     align-items: center;
@@ -1096,7 +1277,9 @@ input:focus, select:focus {
   .prototype-banner,
   .toast,
   .modal-overlay,
-  .stock-take-header .btn {
+  .stock-take-header .btn,
+  .delivery-label-header .btn,
+  #import-another-btn {
     display: none !important;
   }
 
@@ -1110,7 +1293,8 @@ input:focus, select:focus {
     padding: 0;
   }
 
-  .stock-take-card {
+  .stock-take-card,
+  .qr-label-card {
     box-shadow: none;
     border: none;
     padding: 0;
@@ -1129,5 +1313,24 @@ input:focus, select:focus {
   .stock-take-table td {
     color: #000;
     border-bottom: 1px solid #ccc;
+  }
+
+  .qr-label-card .helper-text {
+    display: none;
+  }
+
+  .qr-label-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .qr-label {
+    border: 1px solid #000;
+    break-inside: avoid;
+  }
+
+  .qr-label-text,
+  .qr-label-sub {
+    color: #000;
   }
 }

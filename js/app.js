@@ -4,7 +4,7 @@
 // after a data change.
 
 const EMPLOYEE_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations'];
-const MANAGER_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'products', 'stocktake'];
+const MANAGER_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'products', 'delivery', 'stocktake'];
 
 const TAB_LABELS = {
   putaway: 'Put-Away',
@@ -12,6 +12,7 @@ const TAB_LABELS = {
   baysearch: 'Bay Search',
   locations: 'All Locations',
   products: 'Manage Products',
+  delivery: 'Delivery Import',
   stocktake: 'Stock Take',
 };
 
@@ -21,6 +22,7 @@ const SCREENS = {
   baysearch: renderBaySearchScreen,
   locations: renderLocationsScreen,
   products: renderManageProductsScreen,
+  delivery: renderDeliveryImportScreen,
   stocktake: renderStockTakeScreen,
 };
 

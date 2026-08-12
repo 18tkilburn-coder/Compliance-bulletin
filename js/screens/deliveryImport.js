@@ -1,0 +1,270 @@
+// Delivery Import screen (Manager portal only): upload a delivery note,
+// review a simulated extraction of its line items, then generate printable
+// QR labels for each. Confirmed items become "pending delivery items" that
+// the Put-Away screen's "Scan QR Label" button can later match against.
+
+function renderDeliveryImportScreen(root) {
+  let rowCounter = 0;
+  function nextRowId() {
+    rowCounter += 1;
+    return `row_${rowCounter}`;
+  }
+
+  renderUploadStep();
+
+  function renderUploadStep() {
+    root.innerHTML = `
+      <div class="card">
+        <h2>Delivery Import</h2>
+        <p class="helper-text">
+          Upload a delivery note (PDF, Word, or a photo) to extract its line items and generate QR labels for Put-Away.
+        </p>
+        <label class="upload-dropzone" id="upload-dropzone" for="delivery-file-input">
+          <span class="upload-dropzone-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          </span>
+          <span class="upload-dropzone-text">Drag &amp; drop a delivery note here, or click to choose a file</span>
+          <span class="upload-dropzone-hint">PDF, DOCX, or image</span>
+        </label>
+        <input type="file" id="delivery-file-input" accept=".pdf,.doc,.docx,image/*" hidden />
+      </div>
+    `;
+
+    const dropzone = document.getElementById('upload-dropzone');
+    const fileInput = document.getElementById('delivery-file-input');
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFileSelected(fileInput.files[0]);
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('drag-over');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFileSelected(file);
+    });
+  }
+
+  function handleFileSelected(file) {
+    renderAnalysingStep(file.name);
+
+    // Prototype only: no real document-processing/AI backend exists yet.
+    // The real build would send the uploaded file to a document-extraction
+    // service and parse its response into line items. Here we just fake a
+    // plausible result using the existing product catalogue after a short
+    // delay, to demonstrate the review → generate → print → scan workflow.
+    setTimeout(() => {
+      const items = generateMockExtraction();
+      renderReviewStep(items);
+    }, 1400);
+  }
+
+  function renderAnalysingStep(filename) {
+    root.innerHTML = `
+      <div class="card">
+        <h2>Delivery Import</h2>
+        <div class="analysing-state">
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="analysing-text">Analysing &ldquo;${escapeHtml(filename)}&rdquo;&hellip;</p>
+        </div>
+      </div>
+    `;
+  }
+
+  function generateMockExtraction() {
+    const products = Store.getProducts();
+    if (!products.length) return [];
+    const count = Math.min(randomInt(3, 6), products.length);
+    const chosen = shuffle(products).slice(0, count);
+    return chosen.map((p) => {
+      const [min, max] = p.qtyRange || [10, 50];
+      const { month, year } = randomBestBefore();
+      return {
+        rowId: nextRowId(),
+        productId: p.id,
+        batchCode: randomBatchCode(),
+        bestBeforeMonth: month,
+        bestBeforeYear: year,
+        quantity: randomInt(min, max),
+      };
+    });
+  }
+
+  function renderReviewStep(items) {
+    const products = Store.getProducts();
+
+    root.innerHTML = `
+      <div class="card">
+        <h2>Review Extracted Line Items</h2>
+        <p class="helper-text">
+          This is a simulated extraction &mdash; check each row against the delivery note and correct anything before generating labels.
+        </p>
+        <div class="table-scroll">
+          <table class="line-items-table" id="line-items-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Batch code</th>
+                <th>Best before</th>
+                <th>Qty</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="line-items-body"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn mt-sm" id="add-row-btn">+ Add row</button>
+        <div class="inline-form-actions mt-sm">
+          <button type="button" class="btn" id="cancel-import-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="confirm-generate-btn">Confirm &amp; Generate Labels</button>
+        </div>
+      </div>
+    `;
+
+    const tbody = document.getElementById('line-items-body');
+
+    function productOptionsHtml(selectedId) {
+      return products
+        .map(
+          (p) =>
+            `<option value="${escapeHtml(p.id)}"${p.id === selectedId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+        )
+        .join('');
+    }
+
+    function monthOptionsHtml(selected) {
+      return bestBeforeMonthOptions()
+        .map((m) => `<option value="${m}"${m === selected ? ' selected' : ''}>${m}</option>`)
+        .join('');
+    }
+
+    function yearOptionsHtml(selected) {
+      return bestBeforeYearOptions()
+        .map((y) => `<option value="${y}"${y === selected ? ' selected' : ''}>${y}</option>`)
+        .join('');
+    }
+
+    function addRow(item) {
+      const tr = document.createElement('tr');
+      tr.dataset.rowId = item.rowId;
+      tr.innerHTML = `
+        <td><select class="line-item-product">${productOptionsHtml(item.productId)}</select></td>
+        <td><input type="text" class="line-item-batch" value="${escapeHtml(item.batchCode || '')}" placeholder="e.g. 48213" /></td>
+        <td>
+          <div class="line-item-bbd">
+            <select class="line-item-bbd-month">
+              <option value="">MM</option>
+              ${monthOptionsHtml(item.bestBeforeMonth)}
+            </select>
+            <select class="line-item-bbd-year">
+              <option value="">YY</option>
+              ${yearOptionsHtml(item.bestBeforeYear)}
+            </select>
+          </div>
+        </td>
+        <td><input type="number" class="line-item-qty" min="1" value="${item.quantity || ''}" /></td>
+        <td><button type="button" class="btn btn-sm btn-danger line-item-remove">Remove</button></td>
+      `;
+      tr.querySelector('.line-item-remove').addEventListener('click', () => tr.remove());
+      tbody.appendChild(tr);
+    }
+
+    if (items.length) {
+      items.forEach(addRow);
+    } else {
+      addRow({ rowId: nextRowId(), productId: products[0] && products[0].id, batchCode: '', quantity: '' });
+    }
+
+    document.getElementById('add-row-btn').addEventListener('click', () => {
+      addRow({ rowId: nextRowId(), productId: products[0] && products[0].id, batchCode: '', quantity: '' });
+    });
+
+    document.getElementById('cancel-import-btn').addEventListener('click', () => {
+      renderUploadStep();
+    });
+
+    document.getElementById('confirm-generate-btn').addEventListener('click', () => {
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (!rows.length) {
+        showToast('Add at least one line item first');
+        return;
+      }
+
+      const confirmedItems = [];
+      for (const row of rows) {
+        const productId = row.querySelector('.line-item-product').value;
+        const batchCode = row.querySelector('.line-item-batch').value.trim();
+        const month = row.querySelector('.line-item-bbd-month').value;
+        const year = row.querySelector('.line-item-bbd-year').value;
+        const quantityRaw = row.querySelector('.line-item-qty').value;
+
+        if (!productId || !batchCode || !month || !year || !quantityRaw || Number(quantityRaw) < 1) {
+          showToast('Every row needs a product, batch code, best before, and quantity');
+          return;
+        }
+
+        confirmedItems.push({
+          productId,
+          batchCode,
+          bestBefore: formatBestBefore(month, year),
+          quantity: quantityRaw,
+        });
+      }
+
+      const created = Store.addPendingDeliveryItems(confirmedItems);
+      renderLabelsStep(created);
+    });
+  }
+
+  function buildQrPayload(product, item) {
+    return [product.name, product.sku || '', item.batchCode, item.bestBefore].join('|');
+  }
+
+  function renderLabelsStep(pendingItems) {
+    const products = Store.getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    const labelsHtml = pendingItems
+      .map((item) => {
+        const product = productById.get(item.productId);
+        if (!product) return '';
+        const payload = buildQrPayload(product, item);
+        const qr = qrcode(0, 'M');
+        qr.addData(payload);
+        qr.make();
+        return `
+          <div class="qr-label">
+            <div class="qr-label-code">${qr.createSvgTag(4)}</div>
+            <div class="qr-label-text">${escapeHtml(String(item.quantity))} &times; ${escapeHtml(product.name)}</div>
+            <div class="qr-label-sub">Batch ${escapeHtml(item.batchCode)} &middot; BBD ${escapeHtml(item.bestBefore)}</div>
+          </div>
+        `;
+      })
+      .join('');
+
+    root.innerHTML = `
+      <div class="card qr-label-card">
+        <div class="delivery-label-header">
+          <h2>QR Labels</h2>
+          <button type="button" class="btn btn-primary" id="print-labels-btn">Print Labels</button>
+        </div>
+        <p class="helper-text">
+          ${pendingItems.length} label${pendingItems.length === 1 ? '' : 's'} generated and added to pending delivery items.
+          Scan one from the Put-Away screen to auto-fill Product, Batch Code, and Best Before.
+        </p>
+        <div class="qr-label-grid">${labelsHtml}</div>
+      </div>
+      <button type="button" class="btn mt-sm" id="import-another-btn">Import Another Delivery</button>
+    `;
+
+    document.getElementById('print-labels-btn').addEventListener('click', () => window.print());
+    document.getElementById('import-another-btn').addEventListener('click', () => renderUploadStep());
+  }
+}
