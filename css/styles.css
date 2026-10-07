@@ -1031,6 +1031,102 @@ input:focus, select:focus {
   margin-bottom: 16px;
 }
 
+/* Dashboard */
+.dashboard-welcome-card .helper-text {
+  margin-bottom: 16px;
+}
+
+.stat-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.stat-tile {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.stat-tile-value {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-grey-mid);
+  margin-top: 6px;
+}
+
+.quick-actions-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-action-card {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-dark-grey);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.quick-action-card:hover,
+.quick-action-card:focus-visible {
+  background: var(--color-grey-light);
+  border-left-color: var(--color-orange);
+  outline: none;
+}
+
+.quick-action-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-black);
+}
+
+.quick-action-desc {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+#dashboard-recent-deliveries {
+  cursor: pointer;
+}
+
+#dashboard-recent-deliveries:hover,
+#dashboard-recent-deliveries:focus-visible {
+  outline: none;
+}
+
+#dashboard-recent-deliveries:hover .delivery-history-row,
+#dashboard-recent-deliveries:focus-visible .delivery-history-row {
+  background: var(--color-grey-light);
+}
+
+@media (min-width: 640px) {
+  .quick-actions-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 /* Stock Take */
 .stock-take-header {
   display: flex;

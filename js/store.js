@@ -367,6 +367,18 @@ const Store = (() => {
       .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
   }
 
+  // Most recently logged active entries, newest first — used by the
+  // Dashboard's "Recent Activity" list.
+  function getRecentStockEntries(limit) {
+    const products = getProducts();
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    return getActiveEntries()
+      .map((e) => ({ ...e, product: productById.get(e.productId) || null }))
+      .sort((a, b) => (b.loggedAt || 0) - (a.loggedAt || 0))
+      .slice(0, limit);
+  }
+
   // Stock that has arrived (confirmed from a Delivery Import) but hasn't
   // been racked yet. Items are removed once a matching Put-Away QR scan is
   // actually saved — not just scanned — so an abandoned form doesn't lose
@@ -505,6 +517,7 @@ const Store = (() => {
     searchStock,
     searchPickingBayStock,
     getStockTakeRows,
+    getRecentStockEntries,
     getGateStats,
     getPendingDeliveryItems,
     addPendingDeliveryItems,

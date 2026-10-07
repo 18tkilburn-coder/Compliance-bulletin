@@ -3,8 +3,9 @@
 // entry detail modal) can re-render whichever screen is currently on-screen
 // after a data change.
 
-const EMPLOYEE_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations'];
+const EMPLOYEE_TAB_KEYS = ['dashboard', 'putaway', 'search', 'baysearch', 'locations'];
 const MANAGER_TAB_KEYS = [
+  'dashboard',
   'putaway',
   'search',
   'baysearch',
@@ -17,6 +18,7 @@ const MANAGER_TAB_KEYS = [
 ];
 
 const TAB_LABELS = {
+  dashboard: 'Dashboard',
   putaway: 'Put-Away',
   search: 'Search',
   baysearch: 'Bay Search',
@@ -29,6 +31,7 @@ const TAB_LABELS = {
 };
 
 const SCREENS = {
+  dashboard: renderDashboardScreen,
   putaway: renderPutawayScreen,
   search: renderSearchScreen,
   baysearch: renderBaySearchScreen,
@@ -48,7 +51,7 @@ const AppRouter = (() => {
   const banner = document.getElementById('prototype-banner');
   const switchBtn = document.getElementById('switch-portal-btn');
   const gateStats = document.getElementById('portal-gate-stats');
-  let activeScreen = 'putaway';
+  let activeScreen = 'dashboard';
 
   function renderGateStats() {
     const stats = Store.getGateStats();
@@ -84,7 +87,7 @@ const AppRouter = (() => {
     banner.hidden = false;
     root.hidden = false;
     buildTabs();
-    showScreen('putaway');
+    showScreen('dashboard');
   }
 
   function showGate() {
@@ -115,5 +118,6 @@ const AppRouter = (() => {
 
   return {
     refresh: () => showScreen(activeScreen),
+    goTo: (name) => showScreen(name),
   };
 })();
