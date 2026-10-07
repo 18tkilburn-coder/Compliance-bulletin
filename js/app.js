@@ -3,7 +3,7 @@
 // entry detail modal) can re-render whichever screen is currently on-screen
 // after a data change.
 
-const EMPLOYEE_TAB_KEYS = ['dashboard', 'putaway', 'search', 'baysearch', 'locations'];
+const EMPLOYEE_TAB_KEYS = ['dashboard', 'putaway', 'search', 'baysearch', 'locations', 'palletLabels'];
 const MANAGER_TAB_KEYS = [
   'dashboard',
   'putaway',
