@@ -41,22 +41,59 @@
     </div>
   </div>
 
-  <header class="app-header" id="app-header" hidden>
-    <div class="brand">
-      <div class="brand-text">
+  <div class="app-shell" id="app-shell" hidden>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
         <span class="brand-mark">PER4M<span class="brand-accent">WAREHOUSE</span></span>
         <span class="brand-sub">Warehouse Hub</span>
       </div>
-      <button type="button" class="switch-portal-btn" id="switch-portal-btn">Switch Portal</button>
-    </div>
-    <nav class="tabs" id="tabs"></nav>
-  </header>
 
-  <div class="prototype-banner" id="prototype-banner" hidden>
-    Prototype &mdash; scanning is simulated for this demo. The final build will use live camera barcode scanning.
+      <button type="button" class="command-palette-trigger" id="command-palette-trigger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span>Quick jump&hellip;</span>
+        <kbd>&#8984;K</kbd>
+      </button>
+
+      <div class="sidebar-section-label" id="sidebar-role-label">Workspace</div>
+      <nav class="tabs" id="tabs"></nav>
+
+      <div class="sidebar-footer">
+        <button type="button" class="switch-portal-btn" id="switch-portal-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3 14 10"/><path d="M3 21l7-7"/></svg>
+          <span>Switch Portal</span>
+        </button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar" id="app-header">
+        <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <nav class="breadcrumb" id="breadcrumb" aria-live="polite"></nav>
+        <div class="topbar-clock" id="topbar-clock"></div>
+      </header>
+
+      <div class="prototype-banner" id="prototype-banner" hidden>
+        Prototype &mdash; scanning is simulated for this demo. The final build will use live camera barcode scanning.
+      </div>
+
+      <main id="screen-root" class="screen-root" hidden></main>
+    </div>
   </div>
 
-  <main id="screen-root" class="screen-root" hidden></main>
+  <div class="command-palette-overlay" id="command-palette-overlay" hidden>
+    <div class="command-palette">
+      <div class="command-palette-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="command-palette-input" placeholder="Jump to a screen&hellip;" autocomplete="off" />
+        <kbd>Esc</kbd>
+      </div>
+      <div class="command-palette-list" id="command-palette-list"></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 

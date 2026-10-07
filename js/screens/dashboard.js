@@ -29,6 +29,19 @@ function dashboardTimeAgo(timestamp) {
   return new Date(timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
 }
 
+const DASHBOARD_STAT_ICONS = {
+  locations:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>',
+  stock:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 7.5V16.5L12 21l9-4.5V7.5"/><path d="M12 12v9"/></svg>',
+  pending:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
+  products:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h2"/></svg>',
+  deliveries:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
+};
+
 function renderDashboardScreen(root) {
   const isManager = Portal.isManager();
   const gateStats = Store.getGateStats();
@@ -36,20 +49,23 @@ function renderDashboardScreen(root) {
   const recentEntries = Store.getRecentStockEntries(6);
 
   const statTiles = [
-    { label: 'Locations Tracked', value: gateStats.totalLocations },
-    { label: 'Items In Stock', value: gateStats.itemsInStock.toLocaleString() },
-    { label: 'Awaiting Put-Away', value: pendingCount },
+    { label: 'Locations Tracked', value: gateStats.totalLocations, icon: 'locations' },
+    { label: 'Items In Stock', value: gateStats.itemsInStock.toLocaleString(), icon: 'stock' },
+    { label: 'Awaiting Put-Away', value: pendingCount, icon: 'pending' },
   ];
   if (isManager) {
-    statTiles.push({ label: 'Products Catalogued', value: Store.getProducts().length });
-    statTiles.push({ label: 'Deliveries Logged', value: Store.getDeliveryRecords().length });
+    statTiles.push({ label: 'Products Catalogued', value: Store.getProducts().length, icon: 'products' });
+    statTiles.push({ label: 'Deliveries Logged', value: Store.getDeliveryRecords().length, icon: 'deliveries' });
   }
 
   const tabKeys = (isManager ? MANAGER_TAB_KEYS : EMPLOYEE_TAB_KEYS).filter((key) => key !== 'dashboard');
+  const now = new Date();
+  const dayLabel = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   root.innerHTML = `
     <div class="card dashboard-welcome-card">
-      <h2>Dashboard</h2>
+      <p class="dashboard-eyebrow">${dayLabel}</p>
+      <h1 class="dashboard-headline">${isManager ? 'Your warehouse, at a glance.' : 'Ready when you are.'}</h1>
       <p class="helper-text">
         ${isManager
           ? "Here's the current state of the warehouse, plus quick links into everything you manage."
@@ -60,8 +76,11 @@ function renderDashboardScreen(root) {
           .map(
             (t) => `
           <div class="stat-tile">
-            <div class="stat-tile-value">${t.value}</div>
-            <div class="stat-tile-label">${t.label}</div>
+            <span class="stat-tile-icon" aria-hidden="true">${DASHBOARD_STAT_ICONS[t.icon] || ''}</span>
+            <span class="stat-tile-body">
+              <span class="stat-tile-value">${t.value}</span>
+              <span class="stat-tile-label">${t.label}</span>
+            </span>
           </div>
         `
           )
@@ -76,8 +95,11 @@ function renderDashboardScreen(root) {
           .map(
             (key) => `
           <button type="button" class="quick-action-card" data-screen="${key}">
-            <span class="quick-action-title">${TAB_LABELS[key]}</span>
-            <span class="quick-action-desc">${QUICK_ACTION_DESCRIPTIONS[key] || ''}</span>
+            <span class="quick-action-icon" aria-hidden="true">${TAB_ICONS[key] || ''}</span>
+            <span class="quick-action-text">
+              <span class="quick-action-title">${TAB_LABELS[key]}</span>
+              <span class="quick-action-desc">${QUICK_ACTION_DESCRIPTIONS[key] || ''}</span>
+            </span>
           </button>
         `
           )
