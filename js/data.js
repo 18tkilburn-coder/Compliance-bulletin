@@ -5,6 +5,10 @@ const STAFF_SEED = ['Ricky', 'Nick', 'Leighton', 'Tom'];
 
 // Quantity range is varied a bit per product "type" so the seeded data looks
 // realistic (boxes come in bigger counts than powder tubs, for example).
+// `ean` is the 13-digit GS1 barcode number used by the Barcode Label
+// Generator — left blank until a real one is known (never guessed; EANs are
+// registered numbers). The two Per4m-branded items below carry real
+// EAN/SKU pairs taken from the Barcode/Pallet Label Generator spec docs.
 const PRODUCT_SEED = [
   { name: 'Banana Whey 2kg', sku: 'PWD-BW-2KG', qtyRange: [10, 40] },
   { name: 'Chocolate Chip Pancakes 1.2kg', sku: 'FOOD-CCP-1.2KG', qtyRange: [10, 35] },
@@ -18,7 +22,35 @@ const PRODUCT_SEED = [
   { name: 'COR Sticky Toffee 450g', sku: 'PWD-COR-450G', qtyRange: [15, 45] },
   { name: 'Eco Boxes', sku: '', qtyRange: [30, 100] },
   { name: 'Skinny Boxes', sku: '', qtyRange: [30, 100] },
+  {
+    name: 'Per4m Jug 1500ml',
+    sku: 'PFJUG003',
+    ean: '5061097266873',
+    qtyRange: [15, 40],
+  },
+  {
+    name: 'Per4m Creatine 75g MINI (RANDOM)',
+    sku: 'PFFLAVCR5RANDOM',
+    ean: '5061097265609',
+    qtyRange: [20, 60],
+  },
 ];
+
+// Max quantity per pallet by product size, used by the Pallet Label
+// Generator to split a packing-slip line into pallets. A size with no entry
+// here must never be guessed — the Pallet Labels screen stops and asks for
+// a limit, then saves it here for next time.
+const PALLET_LIMITS_SEED = {
+  '30g': 10800,
+  '33g': 10800,
+  '450g': 480,
+  '800g': 288,
+  '810g': 288,
+  '900g': 288,
+  '1.2kg': 288,
+  '1.8kg': 168,
+  '2kg': 168,
+};
 
 // Racking locations follow the pattern A0<aisle><level>, aisles 01-10, levels c/d only.
 function generateLocationCodes() {
@@ -107,4 +139,20 @@ function shuffle(arr) {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+// EAN-13 check digit: weight the first 12 digits 1,3,1,3... from the left,
+// sum them, then (10 - sum mod 10) mod 10. Used by the Barcode Label
+// Generator to catch a mistyped EAN before printing.
+function eanCheckDigit(first12) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += Number(first12[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+function isValidEan13(ean) {
+  if (!/^\d{13}$/.test(ean)) return false;
+  return eanCheckDigit(ean.slice(0, 12)) === Number(ean[12]);
 }

@@ -1442,6 +1442,275 @@ input:focus, select:focus {
   }
 }
 
+/* Manage Products header (title + Refresh Products button) */
+.manage-products-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.manage-products-header .btn {
+  flex-shrink: 0;
+}
+
+/* Barcode Labels */
+.barcode-ean-ok {
+  color: var(--color-dark-grey);
+}
+
+.barcode-ean-warn {
+  color: var(--color-orange-text);
+  font-weight: 700;
+}
+
+.barcode-label-card {
+  overflow-x: auto;
+}
+
+.barcode-sheet {
+  margin-top: 16px;
+}
+
+.barcode-sheet-single {
+  display: flex;
+  justify-content: center;
+}
+
+.barcode-label {
+  background: var(--color-white);
+  color: var(--color-black);
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.barcode-label-single {
+  width: 6in;
+  /* A hair under the 4in page height — floating-point rounding between
+     screen (96dpi) and print (72dpi) layout can otherwise make an exact
+     4in box fragment onto a trailing blank page. */
+  height: 3.96in;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15in;
+  border: 1px solid var(--color-border);
+}
+
+.barcode-label-single .barcode-svg {
+  width: 4in;
+  max-width: 90%;
+  height: 1.15in;
+}
+
+.barcode-text-single {
+  text-align: center;
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
+
+.barcode-sheet-a4 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 2.9in));
+  gap: 0.37in 0.82in;
+  justify-content: center;
+}
+
+.barcode-label-sheet {
+  width: 100%;
+  aspect-ratio: 2.9 / 1.9;
+  box-sizing: border-box;
+  border: 1px dashed var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+}
+
+.barcode-label-sheet .barcode-svg {
+  width: 85%;
+  height: 0.6in;
+}
+
+.barcode-text-sheet {
+  text-align: center;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+/* Pallet Labels */
+.pallet-limits-ref {
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.pallet-limits-ref summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.pallet-limit-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.pallet-limit-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  padding: 2px 0;
+}
+
+.pallet-input-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.pallet-input-table th {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.pallet-input-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.pallet-input-table select,
+.pallet-input-table input {
+  padding: 7px 8px;
+  font-size: 0.85rem;
+}
+
+.pallet-input-table .pallet-line-product {
+  min-width: 170px;
+}
+
+.pallet-input-table .pallet-line-flavour {
+  min-width: 110px;
+}
+
+.pallet-input-table .pallet-line-qty {
+  min-width: 70px;
+}
+
+.pallet-input-table .pallet-line-batch {
+  min-width: 110px;
+}
+
+.pallet-totals-mismatch {
+  background: var(--color-orange-light);
+  border: 1px solid var(--color-orange);
+  color: var(--color-orange-text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 12px 0 0;
+}
+
+.pallet-totals-ok {
+  background: var(--color-grey-light);
+  border: 1px solid var(--color-dark-grey);
+  color: var(--color-dark-grey);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 12px 0 0;
+}
+
+.pallet-missing-size-card {
+  border-top-color: var(--color-orange);
+}
+
+.pallet-label-stack {
+  margin-top: 16px;
+}
+
+.pallet-label + .pallet-label {
+  /* Plain block flow + margin, not grid/gap — CSS Grid plus `break-after:
+     page` makes Chrome's print pagination insert extra blank pages. */
+  margin-top: 16px;
+}
+
+.pallet-label {
+  width: 6in;
+  /* A hair under the 4in page height — see the barcode-label-single
+     comment above for why. */
+  height: 3.96in;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.35in;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: var(--color-white);
+  color: var(--color-black);
+  font-family: Helvetica, Arial, sans-serif;
+  border: 1px solid var(--color-border);
+}
+
+.pallet-label-top {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.pallet-label-name-block {
+  width: 100%;
+}
+
+.pallet-label-name,
+.pallet-label-flavour {
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.pallet-label-divider {
+  border-top: 1px dashed var(--color-grey-mid);
+  margin: 0.12in 0;
+}
+
+.pallet-label-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.2in;
+}
+
+.pallet-label-info {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.pallet-label-qr svg {
+  width: 1.875in;
+  height: 1.875in;
+  display: block;
+}
+
 @media (min-width: 640px) {
   .modal-overlay {
     align-items: center;
@@ -1527,4 +1796,58 @@ input:focus, select:focus {
   #qr-label-grid.print-selected-only .qr-label:not(.selected) {
     display: none;
   }
+
+  .manage-products-header .btn,
+  .barcode-label-card .delivery-label-header,
+  .barcode-label-card > .helper-text,
+  .pallet-preview-card .delivery-label-header,
+  .pallet-preview-card > .helper-text,
+  #pallet-missing-size-wrap,
+  .card:has(#pallet-lines-table),
+  #barcode-input-card,
+  .pallet-limits-ref {
+    display: none !important;
+  }
+
+  .barcode-label-card,
+  .pallet-preview-card {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Zero the on-screen spacing above the label content — on a label-sized
+     page even 16px of margin is enough to overflow onto a trailing page. */
+  .barcode-sheet,
+  .pallet-label-stack {
+    margin-top: 0;
+  }
+
+  .barcode-label-single {
+    border: none;
+  }
+
+  .barcode-label-sheet {
+    border-color: #ccc;
+  }
+
+  .pallet-label {
+    border: none;
+  }
+
+  .pallet-label-divider {
+    border-top-color: #999;
+  }
 }
+
+/* Page size for Barcode/Pallet Label print jobs is set dynamically in JS
+   (see ui.js setPrintPageSize) via a single unnamed @page rule injected
+   right before window.print() — Chromium's print-to-PDF pipeline doesn't
+   reliably honour CSS named pages (@page name { ... } + page: name), only
+   the plain unnamed form, so that's what every print button here uses. */
+
+.pallet-label:not(:last-child) {
+  break-after: page;
+}
+

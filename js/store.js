@@ -11,9 +11,11 @@ const Store = (() => {
     staff: 'per4m_staff',
     pendingDeliveryItems: 'per4m_pending_delivery_items',
     deliveries: 'per4m_deliveries',
-    // Bumped to v2 to force a reseed that includes picking bays, product
-    // minimum stock levels, and stock entry "logged at" timestamps.
-    seeded: 'per4m_seeded_v2',
+    palletLimits: 'per4m_pallet_limits',
+    // Bumped to v3 to force a reseed that adds the product EAN field and
+    // the two real Per4m-branded catalogue items used by the Barcode/Pallet
+    // Label Generator examples.
+    seeded: 'per4m_seeded_v3',
   };
 
   function load(key, fallback) {
@@ -39,11 +41,14 @@ const Store = (() => {
       id: uid('prod'),
       name: p.name,
       sku: p.sku || '',
+      ean: p.ean || '',
       createdBy: '',
       dateAdded: todayISO(),
       qtyRange: p.qtyRange,
     }));
     save(KEYS.products, products);
+
+    save(KEYS.palletLimits, { ...PALLET_LIMITS_SEED });
 
     const locationCodes = generateLocationCodes();
     save(KEYS.locations, locationCodes);
@@ -84,12 +89,13 @@ const Store = (() => {
     return load(KEYS.products, []);
   }
 
-  function addProduct({ name, sku, createdBy }) {
+  function addProduct({ name, sku, ean, createdBy }) {
     const products = getProducts();
     const product = {
       id: uid('prod'),
       name: name.trim(),
       sku: (sku || '').trim(),
+      ean: (ean || '').trim(),
       createdBy: (createdBy || '').trim(),
       dateAdded: todayISO(),
     };
@@ -107,10 +113,10 @@ const Store = (() => {
     );
   }
 
-  // Updates a product's name/SKU in place. Stock entries only ever store a
-  // productId, so anywhere that joins against the catalogue picks up the
+  // Updates a product's name/SKU/EAN in place. Stock entries only ever store
+  // a productId, so anywhere that joins against the catalogue picks up the
   // change immediately — no need to touch existing stock entries.
-  function updateProduct(id, { name, sku }) {
+  function updateProduct(id, { name, sku, ean }) {
     const products = getProducts();
     const index = products.findIndex((p) => p.id === id);
     if (index === -1) return null;
@@ -118,6 +124,7 @@ const Store = (() => {
       ...products[index],
       name: name.trim(),
       sku: (sku || '').trim(),
+      ean: ean === undefined ? products[index].ean || '' : (ean || '').trim(),
     };
     save(KEYS.products, products);
     return products[index];
@@ -144,6 +151,47 @@ const Store = (() => {
 
   function getStaff() {
     return load(KEYS.staff, STAFF_SEED.slice());
+  }
+
+  // Re-syncs the catalogue against PRODUCT_SEED, the product list baked
+  // into this build. This is NOT a live fetch from per4mbetter.com — a
+  // static, client-only prototype can't call an external site's API from
+  // the browser (no CORS access, and this build's own egress policy blocks
+  // it too) — it's an additive merge against the most recent snapshot
+  // Claude embedded here. Matches by product name; existing products
+  // (including any the manager has edited) are left untouched, and any
+  // catalogue entries not yet present are added. Returns the list of newly
+  // added product names.
+  function refreshProductsFromCatalog() {
+    const products = getProducts();
+    const existingNames = new Set(products.map((p) => p.name.toLowerCase()));
+    const toAdd = PRODUCT_SEED.filter((p) => !existingNames.has(p.name.toLowerCase()));
+
+    const newProducts = toAdd.map((p) => ({
+      id: uid('prod'),
+      name: p.name,
+      sku: p.sku || '',
+      ean: p.ean || '',
+      createdBy: '',
+      dateAdded: todayISO(),
+      qtyRange: p.qtyRange,
+    }));
+
+    if (newProducts.length) {
+      save(KEYS.products, [...products, ...newProducts]);
+    }
+    return newProducts.map((p) => p.name);
+  }
+
+  function getPalletLimits() {
+    return load(KEYS.palletLimits, { ...PALLET_LIMITS_SEED });
+  }
+
+  function setPalletLimit(size, maxQty) {
+    const limits = getPalletLimits();
+    limits[size] = Number(maxQty);
+    save(KEYS.palletLimits, limits);
+    return limits;
   }
 
   // Adds a new staff name (deduped case-insensitively) and persists it for
@@ -467,5 +515,8 @@ const Store = (() => {
     getDeliveryRecordById,
     renameDeliveryRecord,
     deleteDeliveryRecord,
+    refreshProductsFromCatalog,
+    getPalletLimits,
+    setPalletLimit,
   };
 })();

@@ -20,6 +20,26 @@ function formatStatusClass(status) {
   return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
 }
 
+// Forces the physical page size for the next print job, via a single
+// unnamed @page rule — Chromium's print pipeline doesn't reliably honour
+// CSS named pages, only this plain form. Pass e.g. '6in 4in' or 'A4', or
+// null to go back to the browser's own default page size. AppRouter clears
+// this on every screen change so a forced size never leaks into another
+// screen's print button.
+function setPrintPageSize(sizeCss) {
+  let styleEl = document.getElementById('dynamic-print-page-size');
+  if (!sizeCss) {
+    if (styleEl) styleEl.textContent = '';
+    return;
+  }
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'dynamic-print-page-size';
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = `@page { size: ${sizeCss}; margin: 0; }`;
+}
+
 // Wires up a text input + a results list element as a searchable dropdown.
 // `renderItems(query)` must return an array of { html, className?, onSelect }.
 function wireDropdown(inputEl, listEl, renderItems) {

@@ -5,10 +5,28 @@
 function renderManageProductsScreen(root) {
   root.innerHTML = `
     <div class="card">
-      <h2>Manage Products</h2>
+      <div class="manage-products-header">
+        <h2>Manage Products</h2>
+        <button type="button" class="btn btn-sm" id="refresh-products-btn">Refresh Products</button>
+      </div>
+      <p class="helper-text">
+        Refresh checks the product catalogue snapshot bundled with this build for anything not yet in your list.
+        Prototype note: a static page can't live-query per4mbetter.com from the browser (no cross-origin access) —
+        the real build would run this check on a server. Existing products and any edits you've made are never touched.
+      </p>
       <div class="product-list" id="product-list"></div>
     </div>
   `;
+
+  document.getElementById('refresh-products-btn').addEventListener('click', () => {
+    const added = Store.refreshProductsFromCatalog();
+    if (added.length) {
+      showToast(`${added.length} new product${added.length === 1 ? '' : 's'} added: ${added.join(', ')}`);
+    } else {
+      showToast('No new products found in the catalogue snapshot');
+    }
+    renderProductList();
+  });
 
   renderProductList();
 
@@ -28,9 +46,9 @@ function renderManageProductsScreen(root) {
         <div class="product-row" id="product-row-${escapeHtml(p.id)}">
           <div class="product-row-main">
             <div class="product-row-name">${escapeHtml(p.name)}</div>
-            <div class="product-row-sub">${p.sku ? escapeHtml(p.sku) : 'No SKU'} &middot; ${count} active ${
-          count === 1 ? 'entry' : 'entries'
-        }</div>
+            <div class="product-row-sub">${p.sku ? escapeHtml(p.sku) : 'No SKU'}${
+          p.ean ? ` &middot; EAN ${escapeHtml(p.ean)}` : ''
+        } &middot; ${count} active ${count === 1 ? 'entry' : 'entries'}</div>
           </div>
           <div class="product-row-actions">
             <button type="button" class="btn btn-sm" data-action="edit" data-product-id="${escapeHtml(p.id)}">Edit</button>
@@ -118,6 +136,11 @@ function openProductEditModal(productId, onSaved) {
       <label>SKU (optional)</label>
       <input type="text" id="edit-product-sku" value="${escapeHtml(product.sku || '')}" />
     </div>
+    <div class="field">
+      <label>EAN / barcode number (optional)</label>
+      <input type="text" id="edit-product-ean" value="${escapeHtml(product.ean || '')}" placeholder="13-digit GS1 number, e.g. 5061097266873" inputmode="numeric" />
+      <div class="helper-text">Used by the Barcode Label Generator. Never guess this — it's a registered number.</div>
+    </div>
     <button type="button" class="btn btn-primary btn-block" id="edit-product-save">Save changes</button>
   `);
 
@@ -130,7 +153,11 @@ function openProductEditModal(productId, onSaved) {
       return;
     }
     const sku = document.getElementById('edit-product-sku').value.trim();
-    Store.updateProduct(productId, { name, sku });
+    const ean = document.getElementById('edit-product-ean').value.trim();
+    if (ean && !isValidEan13(ean)) {
+      showToast('That EAN doesn\'t look right — check digit mismatch. Saved anyway; double-check it.');
+    }
+    Store.updateProduct(productId, { name, sku, ean });
     closeModal();
     showToast(`"${name}" updated`);
     if (onSaved) onSaved();

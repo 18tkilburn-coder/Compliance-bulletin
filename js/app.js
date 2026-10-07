@@ -4,7 +4,17 @@
 // after a data change.
 
 const EMPLOYEE_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations'];
-const MANAGER_TAB_KEYS = ['putaway', 'search', 'baysearch', 'locations', 'products', 'delivery', 'stocktake'];
+const MANAGER_TAB_KEYS = [
+  'putaway',
+  'search',
+  'baysearch',
+  'locations',
+  'products',
+  'delivery',
+  'stocktake',
+  'barcodeLabels',
+  'palletLabels',
+];
 
 const TAB_LABELS = {
   putaway: 'Put-Away',
@@ -14,6 +24,8 @@ const TAB_LABELS = {
   products: 'Manage Products',
   delivery: 'Delivery Import',
   stocktake: 'Stock Take',
+  barcodeLabels: 'Barcode Labels',
+  palletLabels: 'Pallet Labels',
 };
 
 const SCREENS = {
@@ -24,6 +36,8 @@ const SCREENS = {
   products: renderManageProductsScreen,
   delivery: renderDeliveryImportScreen,
   stocktake: renderStockTakeScreen,
+  barcodeLabels: renderBarcodeLabelsScreen,
+  palletLabels: renderPalletLabelsScreen,
 };
 
 const AppRouter = (() => {
@@ -57,6 +71,7 @@ const AppRouter = (() => {
 
   function showScreen(name) {
     activeScreen = name;
+    setPrintPageSize(null);
     tabsNav.querySelectorAll('.tab-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.screen === name);
     });
