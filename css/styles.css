@@ -6,7 +6,7 @@
   --color-orange: #f57a1f;
 
   /* Derived surface/text tones built from the palette above. */
-  --color-bg: #f2f2f2;
+  --color-bg: #e4e4e7;
   --color-surface: var(--color-white);
   --color-border: #d8d8d8;
   --color-text: var(--color-black);
