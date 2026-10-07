@@ -143,6 +143,19 @@ const AppRouter = (() => {
     gate.hidden = false;
     appShell.hidden = true;
     closeSidebarDrawer();
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    if (usernameInput) usernameInput.value = '';
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.type = 'password';
+      const toggle = document.getElementById('login-password-toggle');
+      if (toggle) {
+        toggle.querySelector('.icon-eye-open').classList.remove('is-hidden-icon');
+        toggle.querySelector('.icon-eye-closed').classList.add('is-hidden-icon');
+        toggle.setAttribute('aria-label', 'Show password');
+      }
+    }
   }
 
   function updateClock() {
@@ -187,6 +200,25 @@ const AppRouter = (() => {
     goTo: (name) => showScreen(name),
     tabKeysForCurrentPortal,
   };
+})();
+
+// ----- Login page: show/hide password toggle. Cosmetic only — the
+// username/password fields are never read or validated; signing in is
+// still done by picking a portal card, same as before this redesign. -----
+(() => {
+  const toggle = document.getElementById('login-password-toggle');
+  const passwordInput = document.getElementById('login-password');
+  if (!toggle || !passwordInput) return;
+  const openEye = toggle.querySelector('.icon-eye-open');
+  const closedEye = toggle.querySelector('.icon-eye-closed');
+
+  toggle.addEventListener('click', () => {
+    const showing = passwordInput.type === 'text';
+    passwordInput.type = showing ? 'password' : 'text';
+    openEye.classList.toggle('is-hidden-icon', !showing);
+    closedEye.classList.toggle('is-hidden-icon', showing);
+    toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  });
 })();
 
 // ----- Command palette: optional power-user quick-jump (Cmd/Ctrl+K). -----
