@@ -12,10 +12,9 @@ const Store = (() => {
     pendingDeliveryItems: 'per4m_pending_delivery_items',
     deliveries: 'per4m_deliveries',
     palletLimits: 'per4m_pallet_limits',
-    // Bumped to v3 to force a reseed that adds the product EAN field and
-    // the two real Per4m-branded catalogue items used by the Barcode/Pallet
-    // Label Generator examples.
-    seeded: 'per4m_seeded_v3',
+    // Bumped to v4 to force a reseed onto the full real PER4M product
+    // catalogue (replacing the earlier placeholder products).
+    seeded: 'per4m_seeded_v4',
   };
 
   function load(key, fallback) {
