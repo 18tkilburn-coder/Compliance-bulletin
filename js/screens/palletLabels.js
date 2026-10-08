@@ -242,6 +242,27 @@ async function importPackingSlipPdf(file) {
   return { lines, grandTotal };
 }
 
+// Packing-slip files over this size aren't kept as a copy in the history
+// log (only their filename is) — localStorage has a small, fixed quota
+// shared by the whole app, and every past batch's copy sits in it.
+const MAX_STORED_SOURCE_FILE_BYTES = 4 * 1024 * 1024;
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatPalletBatchDate(timestamp) {
+  const d = new Date(timestamp);
+  const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return `${datePart}, ${timePart}`;
+}
+
 function renderPalletLabelsScreen(root) {
   let rowCounter = 0;
   function nextRowId() {
@@ -249,7 +270,34 @@ function renderPalletLabelsScreen(root) {
     return `prow_${rowCounter}`;
   }
 
+  // Tracks the packing-slip file (if any) behind the batch currently being
+  // built, so a successful Generate can save a copy of it into the history
+  // log alongside the labels it produced.
+  let currentSourceFile = null;
+  let currentSourceFileDataUrl = null;
+
   renderInputStep();
+
+  function subNavHtml(active) {
+    return `
+      <div class="sub-tabs">
+        <button type="button" class="sub-tab-btn${active === 'new' ? ' active' : ''}" data-subtab="new">New Batch</button>
+        <button type="button" class="sub-tab-btn${active === 'history' ? ' active' : ''}" data-subtab="history">Past Pallet Labels</button>
+      </div>
+    `;
+  }
+
+  function wireSubNav() {
+    document.querySelectorAll('.sub-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.subtab === 'new') {
+          renderInputStep();
+        } else {
+          renderHistoryList();
+        }
+      });
+    });
+  }
 
   function limitsReferenceHtml() {
     const limits = Store.getPalletLimits();
@@ -266,7 +314,11 @@ function renderPalletLabelsScreen(root) {
   }
 
   function renderInputStep() {
+    currentSourceFile = null;
+    currentSourceFileDataUrl = null;
+
     root.innerHTML = `
+      ${subNavHtml('new')}
       <div class="card">
         <h2>Pallet Labels</h2>
         <p class="helper-text">
@@ -357,6 +409,7 @@ function renderPalletLabelsScreen(root) {
     document.getElementById('pallet-add-row-btn').addEventListener('click', () => addRow());
     document.getElementById('pallet-generate-btn').addEventListener('click', attemptGenerate);
     wirePdfImport(addRow, tbody);
+    wireSubNav();
   }
 
   function wirePdfImport(addRow, tbody) {
@@ -379,6 +432,16 @@ function renderPalletLabelsScreen(root) {
         </div>
       `;
       summaryEl.innerHTML = '';
+
+      currentSourceFile = file;
+      currentSourceFileDataUrl = null;
+      if (file.size <= MAX_STORED_SOURCE_FILE_BYTES) {
+        readFileAsDataUrl(file)
+          .then((dataUrl) => {
+            currentSourceFileDataUrl = dataUrl;
+          })
+          .catch(() => {});
+      }
 
       importPackingSlipPdf(file)
         .then(({ lines, grandTotal }) => {
@@ -526,7 +589,24 @@ function renderPalletLabelsScreen(root) {
     });
 
     const palletSumCheck = pallets.reduce((sum, p) => sum + p.quantity, 0);
-    feedbackEl.innerHTML = `<p class="pallet-totals-ok">Totals check passed: ${palletSumCheck.toLocaleString()} across ${pallets.length} pallet${pallets.length === 1 ? '' : 's'} = grand total ${grandTotal.toLocaleString()}.</p>`;
+
+    const batchRecord = Store.addPalletLabelBatch({
+      filename: currentSourceFile ? currentSourceFile.name : '',
+      sourceFileDataUrl: currentSourceFileDataUrl,
+      pallets,
+      grandTotal,
+    });
+
+    feedbackEl.innerHTML = `
+      <p class="pallet-totals-ok">
+        Totals check passed: ${palletSumCheck.toLocaleString()} across ${pallets.length} pallet${pallets.length === 1 ? '' : 's'} = grand total ${grandTotal.toLocaleString()}.
+        Saved to <button type="button" class="link-btn" id="pallet-view-history-link">Past Pallet Labels</button> as &ldquo;${escapeHtml(batchRecord.name)}&rdquo;.
+      </p>
+    `;
+    const historyLink = document.getElementById('pallet-view-history-link');
+    if (historyLink) {
+      historyLink.addEventListener('click', () => renderBatchDetail(batchRecord.id));
+    }
 
     renderPalletPreview(pallets);
   }
@@ -622,5 +702,211 @@ function renderPalletLabelsScreen(root) {
       window.print();
     });
     previewWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ----- Past Pallet Labels (history log) -----
+
+  function renderHistoryList() {
+    const batches = Store.getPalletLabelBatches();
+
+    root.innerHTML = `
+      ${subNavHtml('history')}
+      <div class="card">
+        <h2>Past Pallet Labels</h2>
+        ${
+          batches.length
+            ? `<div class="delivery-history-list" id="pallet-history-list">${batches
+                .map(
+                  (b) => `
+                <div class="delivery-history-row" data-batch-id="${escapeHtml(b.id)}" role="button" tabindex="0">
+                  <div class="delivery-history-main">
+                    <div class="delivery-history-filename">${escapeHtml(b.name)}</div>
+                    <div class="delivery-history-meta">
+                      Generated ${escapeHtml(formatPalletBatchDate(b.generatedAt))} &middot;
+                      ${b.grandTotal.toLocaleString()} unit${b.grandTotal === 1 ? '' : 's'}${
+                    b.sourceFileDataUrl ? ' &middot; original PDF saved' : b.filename ? ' &middot; original PDF not kept (too large)' : ' &middot; entered manually'
+                  }
+                    </div>
+                  </div>
+                  <div class="delivery-history-row-right">
+                    <div class="delivery-history-count">${b.pallets.length} label${b.pallets.length === 1 ? '' : 's'}</div>
+                    <button type="button" class="btn btn-sm btn-danger pallet-batch-delete-btn" data-batch-id="${escapeHtml(
+                      b.id
+                    )}" aria-label="Delete batch">Delete</button>
+                  </div>
+                </div>
+              `
+                )
+                .join('')}</div>`
+            : '<div class="empty-state">No pallet labels generated yet. Create one from the New Batch tab.</div>'
+        }
+      </div>
+    `;
+    wireSubNav();
+
+    const list = document.getElementById('pallet-history-list');
+    if (!list) return;
+
+    function handleActivate(e) {
+      const deleteBtn = e.target.closest('.pallet-batch-delete-btn');
+      if (deleteBtn) {
+        e.stopPropagation();
+        confirmDeleteBatchRow(deleteBtn.dataset.batchId);
+        return;
+      }
+      const row = e.target.closest('.delivery-history-row');
+      if (row) renderBatchDetail(row.dataset.batchId);
+    }
+
+    list.addEventListener('click', handleActivate);
+    list.addEventListener('keydown', (e) => {
+      if (e.target.closest('.pallet-batch-delete-btn')) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleActivate(e);
+      }
+    });
+  }
+
+  function confirmDeleteBatchRow(id) {
+    const rowEl = document.querySelector(`.delivery-history-row[data-batch-id="${id}"]`);
+    if (!rowEl) return;
+    const batch = Store.getPalletLabelBatchById(id);
+
+    rowEl.removeAttribute('role');
+    rowEl.removeAttribute('tabindex');
+    rowEl.innerHTML = `
+      <div class="confirm-prompt delivery-row-confirm">
+        <p class="confirm-message">Delete &ldquo;${escapeHtml(
+          batch ? batch.name : 'this batch'
+        )}&rdquo;? This removes it from the history log permanently &mdash; it does not affect stock already put away.</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn" id="cancel-delete-pallet-batch">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-delete-pallet-batch">Yes, delete</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('cancel-delete-pallet-batch').addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderHistoryList();
+    });
+    document.getElementById('confirm-delete-pallet-batch').addEventListener('click', (e) => {
+      e.stopPropagation();
+      Store.deletePalletLabelBatch(id);
+      showToast('Pallet label batch deleted');
+      renderHistoryList();
+    });
+  }
+
+  function renderBatchDetail(batchId) {
+    const batch = Store.getPalletLabelBatchById(batchId);
+    if (!batch) {
+      renderHistoryList();
+      return;
+    }
+
+    const labelsHtml = batch.pallets.map((p, i) => labelHtml(p, i, batch.pallets.length)).join('');
+
+    root.innerHTML = `
+      ${subNavHtml('history')}
+      <div class="card pallet-preview-card">
+        <div class="delivery-label-header">
+          <div class="delivery-name-row" id="pallet-batch-name-row">
+            <h2 id="pallet-batch-name-display">${escapeHtml(batch.name)}</h2>
+            <button type="button" class="icon-btn" id="rename-pallet-batch-btn" aria-label="Rename batch">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+          </div>
+          <button type="button" class="btn btn-sm btn-danger" id="delete-pallet-batch-detail-btn">Delete</button>
+        </div>
+        <p class="helper-text">
+          Generated ${escapeHtml(formatPalletBatchDate(batch.generatedAt))}${
+      batch.filename ? ` &middot; ${escapeHtml(batch.filename)}` : ' &middot; entered manually'
+    } &middot; ${batch.pallets.length} label${batch.pallets.length === 1 ? '' : 's'} &middot;
+          ${batch.grandTotal.toLocaleString()} unit${batch.grandTotal === 1 ? '' : 's'} total.
+        </p>
+        ${
+          batch.sourceFileDataUrl
+            ? `<a class="btn btn-sm mt-sm" href="${batch.sourceFileDataUrl}" download="${escapeHtml(
+                batch.filename || 'packing-slip.pdf'
+              )}">Download original packing slip PDF</a>`
+            : ''
+        }
+        <div class="delivery-label-header mt-sm">
+          <h2>Labels</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="print-pallet-batch-btn">Print All</button>
+        </div>
+        <div class="pallet-label-stack" id="pallet-batch-label-stack">${labelsHtml}</div>
+      </div>
+    `;
+    wireSubNav();
+
+    document.querySelectorAll('#pallet-batch-label-stack .pallet-label-name-block').forEach((block) => {
+      const top = block.closest('.pallet-label-top');
+      fitPalletNameBlock(block, top.clientHeight);
+    });
+
+    document.getElementById('print-pallet-batch-btn').addEventListener('click', () => {
+      setPrintPageSize('6in 4in');
+      window.print();
+    });
+
+    document.getElementById('rename-pallet-batch-btn').addEventListener('click', () => {
+      const nameRow = document.getElementById('pallet-batch-name-row');
+      nameRow.innerHTML = `
+        <input type="text" id="pallet-batch-name-input" value="${escapeHtml(batch.name)}" />
+        <button type="button" class="btn btn-sm btn-primary" id="save-pallet-batch-name-btn">Save</button>
+        <button type="button" class="btn btn-sm" id="cancel-pallet-batch-name-btn">Cancel</button>
+      `;
+      const input = document.getElementById('pallet-batch-name-input');
+      input.focus();
+      input.select();
+
+      function saveRename() {
+        const newName = input.value.trim();
+        if (!newName) {
+          showToast('Name is required');
+          return;
+        }
+        Store.renamePalletLabelBatch(batchId, newName);
+        showToast('Renamed');
+        renderBatchDetail(batchId);
+      }
+
+      document.getElementById('save-pallet-batch-name-btn').addEventListener('click', saveRename);
+      document.getElementById('cancel-pallet-batch-name-btn').addEventListener('click', () => renderBatchDetail(batchId));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveRename();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          renderBatchDetail(batchId);
+        }
+      });
+    });
+
+    document.getElementById('delete-pallet-batch-detail-btn').addEventListener('click', () => {
+      const header = document.querySelector('.pallet-preview-card .delivery-label-header');
+      header.outerHTML = `
+        <div class="confirm-prompt delivery-delete-confirm">
+          <p class="confirm-message">Delete &ldquo;${escapeHtml(
+            batch.name
+          )}&rdquo;? This removes it from the history log permanently &mdash; it does not affect stock already put away.</p>
+          <div class="confirm-actions">
+            <button type="button" class="btn" id="cancel-delete-pallet-batch-detail">Cancel</button>
+            <button type="button" class="btn btn-danger" id="confirm-delete-pallet-batch-detail">Yes, delete</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('cancel-delete-pallet-batch-detail').addEventListener('click', () => {
+        renderBatchDetail(batchId);
+      });
+      document.getElementById('confirm-delete-pallet-batch-detail').addEventListener('click', () => {
+        Store.deletePalletLabelBatch(batchId);
+        showToast('Pallet label batch deleted');
+        renderHistoryList();
+      });
+    });
   }
 }

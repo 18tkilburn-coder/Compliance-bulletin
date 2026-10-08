@@ -12,6 +12,7 @@ const Store = (() => {
     pendingDeliveryItems: 'per4m_pending_delivery_items',
     deliveries: 'per4m_deliveries',
     palletLimits: 'per4m_pallet_limits',
+    palletLabelBatches: 'per4m_pallet_label_batches',
     // Bumped to v4 to force a reseed onto the full real PER4M product
     // catalogue (replacing the earlier placeholder products).
     seeded: 'per4m_seeded_v5',
@@ -482,6 +483,61 @@ const Store = (() => {
     save(KEYS.deliveries, deliveries);
   }
 
+  // Default name for a newly-generated pallet label batch: the uploaded
+  // packing-slip filename if one exists, otherwise a date-based fallback.
+  function defaultPalletBatchName(filename) {
+    if (filename) return filename;
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = d.toLocaleDateString('en-GB', { month: 'short' });
+    const year = d.getFullYear();
+    return `Pallet Labels – ${day} ${month} ${year}`;
+  }
+
+  // Permanent history of every generated pallet label batch, independent of
+  // the input form — so past label runs stay browsable and reprintable.
+  // sourceFileDataUrl is the original uploaded packing-slip PDF (as a data
+  // URL) when one was used, so it can be reopened later; it's omitted for
+  // manual-entry batches or when the file was too large to keep a copy of.
+  function addPalletLabelBatch({ filename, sourceFileDataUrl, pallets, grandTotal }) {
+    const batches = load(KEYS.palletLabelBatches, []);
+    const record = {
+      id: uid('palletbatch'),
+      filename: filename || '',
+      name: defaultPalletBatchName(filename),
+      sourceFileDataUrl: sourceFileDataUrl || null,
+      pallets,
+      grandTotal,
+      generatedAt: Date.now(),
+    };
+    batches.push(record);
+    save(KEYS.palletLabelBatches, batches);
+    return record;
+  }
+
+  function getPalletLabelBatches() {
+    return load(KEYS.palletLabelBatches, []).sort((a, b) => b.generatedAt - a.generatedAt);
+  }
+
+  function getPalletLabelBatchById(id) {
+    return getPalletLabelBatches().find((b) => b.id === id) || null;
+  }
+
+  function renamePalletLabelBatch(id, name) {
+    const batches = load(KEYS.palletLabelBatches, []);
+    const index = batches.findIndex((b) => b.id === id);
+    if (index === -1) return null;
+    const trimmed = name.trim();
+    batches[index] = { ...batches[index], name: trimmed || batches[index].name };
+    save(KEYS.palletLabelBatches, batches);
+    return batches[index];
+  }
+
+  function deletePalletLabelBatch(id) {
+    const batches = load(KEYS.palletLabelBatches, []).filter((b) => b.id !== id);
+    save(KEYS.palletLabelBatches, batches);
+  }
+
   // Small live snapshot shown on the portal gate so it feels connected to
   // real data rather than a static splash screen.
   function getGateStats() {
@@ -530,5 +586,10 @@ const Store = (() => {
     refreshProductsFromCatalog,
     getPalletLimits,
     setPalletLimit,
+    addPalletLabelBatch,
+    getPalletLabelBatches,
+    getPalletLabelBatchById,
+    renamePalletLabelBatch,
+    deletePalletLabelBatch,
   };
 })();
