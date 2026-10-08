@@ -10,8 +10,15 @@
 // not per-unit stock entries, so it doesn't touch the pending-delivery
 // or stock-entry data at all.
 
+// Pallet labels drop the "Per4m" brand prefix and the word "Protein" from
+// the packing slip's product text — e.g. "Per4m Advanced Protein 495g"
+// becomes "Advanced 495g" on the printed label.
 function stripProteinWord(text) {
-  return text.replace(/\bProtein\b/gi, '').replace(/\s+/g, ' ').trim();
+  return text
+    .replace(/\bPer4m\b/gi, '')
+    .replace(/\bProtein\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // Pulls the trailing size token (e.g. "33g", "1.2kg") off a product+size
@@ -35,9 +42,13 @@ function splitIntoPallets(totalQty, maxPerPallet) {
   return pallets;
 }
 
-function buildPalletQrPayload({ name, flavour, qty, bbe, batchCodes }) {
+// Batch hyphens become periods in the QR payload only (not on the printed
+// label) because a phone camera's QR reader treats a hyphenated number like
+// "300926-11" as a phone number and offers to dial it instead of showing
+// the scanned text.
+function buildPalletQrPayload({ name, flavour, quantity, bbe, batchCodes }) {
   const batchForQr = batchCodes.map((b) => b.replace(/-/g, '.')).join(', ');
-  return `${name} - ${flavour} | ${qty} x | ${bbe} | ${batchForQr}`;
+  return `${name} - ${flavour} | QTY ${quantity} | BBE ${bbe} | BATCH ${batchForQr}`;
 }
 
 // Shrinks the name+flavour block's font size until it fits the available
@@ -52,6 +63,183 @@ function fitPalletNameBlock(blockEl, maxHeightPx) {
     size -= 2;
     blockEl.style.fontSize = size + 'px';
   }
+}
+
+// ----- Packing-slip PDF import -----
+// Lets a manager upload the actual packing-slip PDF instead of typing every
+// line by hand. Only digital PDFs with a real text layer are supported (an
+// exported/printed-to-PDF spreadsheet, not a photo) — a phone photo has no
+// embedded text at all, so there is nothing here to extract it from; those
+// still have to be entered on the manual table below.
+
+let pdfWorkerConfigured = false;
+
+// pdf.js needs its parsing worker as a separate script. The real file tree
+// serves it from js/vendor/pdf.worker.min.js; the single-file artifact
+// bundle instead inlines it as base64 text (see build-bundle.py) and turns
+// it into a Blob URL here, so the same code works in both contexts.
+function ensurePdfWorkerConfigured() {
+  if (pdfWorkerConfigured) return;
+  pdfWorkerConfigured = true;
+  const inlineWorker = document.getElementById('pdf-worker-b64');
+  if (inlineWorker) {
+    const binary = atob(inlineWorker.textContent.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/javascript' });
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  } else {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/vendor/pdf.worker.min.js';
+  }
+}
+
+// pdf.js hands back text in disconnected fragments, not reading order.
+// Reconstruct each printed line by clustering fragments whose baseline sits
+// within a few px of each other (same row), then reading left to right.
+async function extractPdfTextLines(file) {
+  ensurePdfWorkerConfigured();
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const lines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const items = content.items
+      .filter((it) => it.str && it.str.trim())
+      .map((it) => ({ text: it.str, x: it.transform[4], y: it.transform[5] }));
+
+    const rows = [];
+    items.forEach((item) => {
+      const row = rows.find((r) => Math.abs(r.y - item.y) < 3);
+      if (row) {
+        row.items.push(item);
+        row.y = (row.y + item.y) / 2;
+      } else {
+        rows.push({ y: item.y, items: [item] });
+      }
+    });
+
+    rows
+      .sort((a, b) => b.y - a.y) // PDF y increases upward — top of page first
+      .forEach((row) => {
+        const lineText = row.items
+          .sort((a, b) => a.x - b.x)
+          .map((i) => i.text)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (lineText) lines.push(lineText);
+      });
+  }
+
+  return lines;
+}
+
+// Splits "Per4m Advanced Protein 495g (Chocolate Hazelnut Wafer)" into the
+// product+size text and the flavour in parentheses.
+function splitProductAndFlavour(productFullText) {
+  const match = productFullText.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (match) return { productText: match[1].trim(), flavour: match[2].trim() };
+  return { productText: productFullText.trim(), flavour: '' };
+}
+
+// A packing-slip row has a fixed shape once reconstructed into one line of
+// text: [Product (Flavour)]  BatchCode  LotNumber  MM/YYYY  Total. The
+// product+flavour cell is blank on every row after the first for a given
+// product (a merged/continuation cell), so those rows match the shorter
+// pattern and inherit whichever product most recently started a group.
+const PACKING_SLIP_ROW_WITH_PRODUCT = /^(.+?)\s+(\d{3,8}-\d{1,4})\s+(\d{3,8})\s+(\d{1,2})\/(\d{4})\s+(\d+)$/;
+const PACKING_SLIP_ROW_CONTINUATION = /^(\d{3,8}-\d{1,4})\s+(\d{3,8})\s+(\d{1,2})\/(\d{4})\s+(\d+)$/;
+const PACKING_SLIP_GROUP_TOTAL_ROW = /^(.+?)\s+Total\s+(\d+)$/i;
+const PACKING_SLIP_GRAND_TOTAL_ROW = /^Grand\s*Total\s+(\d+)$/i;
+
+// Turns the reconstructed text lines into one group per product+flavour,
+// summing quantity and collecting every batch code under it — exactly the
+// shape the manual-entry table already produces, so everything downstream
+// (pallet splitting, totals check, label generation) runs unchanged.
+function parsePackingSlipLines(textLines) {
+  const groups = [];
+  const byKey = new Map();
+  let grandTotal = null;
+  let currentProductFullText = null;
+
+  function groupFor(productFullText) {
+    const key = productFullText.trim().toLowerCase();
+    if (byKey.has(key)) return byKey.get(key);
+    const { productText, flavour } = splitProductAndFlavour(productFullText);
+    const group = { productText, flavour, batchCodes: [], quantity: 0, bbeMonth: '', bbeYear: '', statedTotal: null };
+    byKey.set(key, group);
+    groups.push(group);
+    return group;
+  }
+
+  function addRow(group, batch, month, yearFull, qty) {
+    group.batchCodes.push(batch);
+    group.quantity += Number(qty);
+    if (!group.bbeMonth) {
+      group.bbeMonth = month.padStart(2, '0');
+      group.bbeYear = yearFull.slice(-2);
+    }
+  }
+
+  textLines.forEach((line) => {
+    let m = line.match(PACKING_SLIP_GRAND_TOTAL_ROW);
+    if (m) {
+      grandTotal = Number(m[1]);
+      return;
+    }
+    m = line.match(PACKING_SLIP_GROUP_TOTAL_ROW);
+    if (m) {
+      const group = byKey.get(m[1].trim().toLowerCase());
+      if (group) group.statedTotal = Number(m[2]);
+      currentProductFullText = null;
+      return;
+    }
+    m = line.match(PACKING_SLIP_ROW_WITH_PRODUCT);
+    if (m) {
+      currentProductFullText = m[1].trim();
+      addRow(groupFor(currentProductFullText), m[2], m[4], m[5], m[6]);
+      return;
+    }
+    m = line.match(PACKING_SLIP_ROW_CONTINUATION);
+    if (m && currentProductFullText) {
+      addRow(groupFor(currentProductFullText), m[1], m[3], m[4], m[5]);
+    }
+    // Anything else (page headers, column titles, trailer/ETA notes) is
+    // ignored — it never matches a data-row or total-row shape.
+  });
+
+  return { groups, grandTotal };
+}
+
+// Runs the full import: extract → parse → shape into the same line objects
+// readLines() produces from the manual table, flagging any group whose
+// computed sum doesn't match the slip's own "<product> Total" row.
+async function importPackingSlipPdf(file) {
+  const textLines = await extractPdfTextLines(file);
+  const { groups, grandTotal } = parsePackingSlipLines(textLines);
+
+  const lines = groups.map((g) => {
+    const flagged = g.statedTotal !== null && g.statedTotal !== g.quantity;
+    return {
+      productText: g.productText,
+      name: stripProteinWord(g.productText),
+      sizeKey: parseSizeKey(g.productText),
+      flavour: g.flavour,
+      quantity: g.quantity,
+      bbeMonth: g.bbeMonth,
+      bbeYear: g.bbeYear,
+      bbe: g.bbeMonth && g.bbeYear ? formatBestBefore(g.bbeMonth, g.bbeYear) : '',
+      batchCodes: g.batchCodes,
+      flagged,
+      flagReason: flagged
+        ? `Document's own subtotal for this line is ${g.statedTotal.toLocaleString()}, but its batch rows add up to ${g.quantity.toLocaleString()} — check against the packing slip.`
+        : null,
+    };
+  });
+
+  return { lines, grandTotal };
 }
 
 function renderPalletLabelsScreen(root) {
@@ -82,9 +270,19 @@ function renderPalletLabelsScreen(root) {
       <div class="card">
         <h2>Pallet Labels</h2>
         <p class="helper-text">
-          Enter each line from the packing slip, then generate pallet labels. Every pallet's quantity must add up
-          to the grand total exactly before labels are produced.
+          Upload the packing slip PDF to fill in the lines below automatically, or enter them by hand. Every
+          pallet's quantity must add up to the grand total exactly before labels are produced.
         </p>
+        <label class="upload-dropzone" id="pallet-upload-dropzone" for="pallet-file-input">
+          <span class="upload-dropzone-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          </span>
+          <span class="upload-dropzone-text">Drag &amp; drop the packing slip PDF here, or click to choose a file</span>
+          <span class="upload-dropzone-hint">PDF only &mdash; photos aren&rsquo;t auto-read yet, enter those rows manually below.</span>
+        </label>
+        <input type="file" id="pallet-file-input" accept=".pdf,application/pdf" hidden />
+        <div id="pallet-import-status"></div>
+        <div id="pallet-import-summary"></div>
         ${limitsReferenceHtml()}
         <div class="table-scroll">
           <table class="line-items-table pallet-input-table" id="pallet-lines-table">
@@ -118,31 +316,37 @@ function renderPalletLabelsScreen(root) {
 
     const tbody = document.getElementById('pallet-lines-body');
 
-    function addRow() {
+    function addRow(prefill) {
       const rowId = nextRowId();
       const tr = document.createElement('tr');
       tr.dataset.rowId = rowId;
+      if (prefill && prefill.flagged) {
+        tr.classList.add('pallet-line-flagged');
+        tr.title = prefill.flagReason || '';
+      }
+      const p = prefill || {};
+      const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
       tr.innerHTML = `
-        <td><input type="text" class="pallet-line-product" placeholder="e.g. Whey Protein 450g" /></td>
-        <td><input type="text" class="pallet-line-flavour" placeholder="e.g. Chocolate" /></td>
-        <td><input type="number" class="pallet-line-qty" min="1" placeholder="500" /></td>
+        <td><input type="text" class="pallet-line-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.productText || '')}" /></td>
+        <td><input type="text" class="pallet-line-flavour" placeholder="e.g. Chocolate" value="${escapeHtml(p.flavour || '')}" /></td>
+        <td><input type="number" class="pallet-line-qty" min="1" placeholder="500" value="${p.quantity || ''}" /></td>
         <td>
           <div class="line-item-bbd">
             <select class="pallet-line-bbe-month">
               <option value="">MM</option>
               ${bestBeforeMonthOptions()
-                .map((m) => `<option value="${m}">${m}</option>`)
+                .map((m) => `<option value="${m}"${m === p.bbeMonth ? ' selected' : ''}>${m}</option>`)
                 .join('')}
             </select>
             <select class="pallet-line-bbe-year">
               <option value="">YY</option>
               ${bestBeforeYearOptions()
-                .map((y) => `<option value="${y}">${y}</option>`)
+                .map((y) => `<option value="${y}"${y === p.bbeYear ? ' selected' : ''}>${y}</option>`)
                 .join('')}
             </select>
           </div>
         </td>
-        <td><input type="text" class="pallet-line-batch" placeholder="e.g. 123-456" /></td>
+        <td><input type="text" class="pallet-line-batch" placeholder="e.g. 123-456" value="${escapeHtml(batchValue)}" /></td>
         <td><button type="button" class="btn btn-sm btn-danger pallet-line-remove">Remove</button></td>
       `;
       tr.querySelector('.pallet-line-remove').addEventListener('click', () => tr.remove());
@@ -150,8 +354,96 @@ function renderPalletLabelsScreen(root) {
     }
 
     addRow();
-    document.getElementById('pallet-add-row-btn').addEventListener('click', addRow);
+    document.getElementById('pallet-add-row-btn').addEventListener('click', () => addRow());
     document.getElementById('pallet-generate-btn').addEventListener('click', attemptGenerate);
+    wirePdfImport(addRow, tbody);
+  }
+
+  function wirePdfImport(addRow, tbody) {
+    const dropzone = document.getElementById('pallet-upload-dropzone');
+    const fileInput = document.getElementById('pallet-file-input');
+    const statusEl = document.getElementById('pallet-import-status');
+    const summaryEl = document.getElementById('pallet-import-summary');
+
+    function handleFile(file) {
+      const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      if (!looksLikePdf) {
+        showToast('Only PDF packing slips can be auto-imported right now — enter image-based slips manually below.');
+        return;
+      }
+
+      statusEl.innerHTML = `
+        <div class="analysing-state analysing-state-inline">
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="analysing-text">Reading &ldquo;${escapeHtml(file.name)}&rdquo;&hellip;</p>
+        </div>
+      `;
+      summaryEl.innerHTML = '';
+
+      importPackingSlipPdf(file)
+        .then(({ lines, grandTotal }) => {
+          statusEl.innerHTML = '';
+          if (!lines.length) {
+            summaryEl.innerHTML = `
+              <p class="pallet-totals-mismatch">
+                Couldn&rsquo;t find any recognisable packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
+                It may be a scanned image rather than a digital PDF &mdash; enter the lines manually below.
+              </p>
+            `;
+            return;
+          }
+
+          tbody.innerHTML = '';
+          lines.forEach((line) => addRow(line));
+
+          if (grandTotal !== null) {
+            document.getElementById('pallet-grand-total').value = grandTotal;
+          }
+
+          const flaggedLines = lines.filter((l) => l.flagged);
+          const computedTotal = lines.reduce((sum, l) => sum + l.quantity, 0);
+          const totalMatches = grandTotal === null || computedTotal === grandTotal;
+
+          summaryEl.innerHTML = `
+            <p class="${flaggedLines.length || !totalMatches ? 'pallet-totals-mismatch' : 'pallet-totals-ok'}">
+              Imported ${lines.length} line${lines.length === 1 ? '' : 's'} from &ldquo;${escapeHtml(file.name)}&rdquo;
+              (${computedTotal.toLocaleString()} units${grandTotal !== null ? ` vs. the slip's stated grand total of ${grandTotal.toLocaleString()}` : ''}).
+              ${totalMatches ? '' : ' These do not match — check the lines below.'}
+              ${flaggedLines.length
+                ? ` ${flaggedLines.length} line${flaggedLines.length === 1 ? '' : 's'} flagged (highlighted below): its batch rows don't add up to the slip's own subtotal for that product.`
+                : ' Every line’s batch rows matched the slip’s own subtotal for that product.'}
+              Review every row against the packing slip before generating.
+            </p>
+          `;
+        })
+        .catch((err) => {
+          statusEl.innerHTML = '';
+          summaryEl.innerHTML = `
+            <p class="pallet-totals-mismatch">
+              Couldn&rsquo;t read &ldquo;${escapeHtml(file.name)}&rdquo;: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
+              Enter the lines manually below.
+            </p>
+          `;
+        });
+    }
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('drag-over');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
   }
 
   function readLines() {

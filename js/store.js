@@ -14,7 +14,7 @@ const Store = (() => {
     palletLimits: 'per4m_pallet_limits',
     // Bumped to v4 to force a reseed onto the full real PER4M product
     // catalogue (replacing the earlier placeholder products).
-    seeded: 'per4m_seeded_v4',
+    seeded: 'per4m_seeded_v5',
   };
 
   function load(key, fallback) {
