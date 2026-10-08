@@ -256,6 +256,40 @@ function readFileAsDataUrl(file) {
   });
 }
 
+// Offers a stored file (as a data URL) back to the user for download. A
+// plain `<a download>` click doesn't work inside the sandboxed iframe the
+// published Artifact runs in, so when a `downloads` capability is present
+// (the Artifact context) this goes through it instead; the real file-tree
+// deployment has no such sandbox, so it falls straight through to the
+// ordinary anchor-click trick there.
+async function triggerFileDownload(dataUrl, filename) {
+  const blob = await (await fetch(dataUrl)).blob();
+
+  if (window.claude && typeof window.claude.use === 'function') {
+    try {
+      const downloads = await window.claude.use('downloads');
+      if (downloads) {
+        await downloads.save({ filename, data: blob });
+        return;
+      }
+    } catch (err) {
+      if (err && err.code === 'declined') return;
+      // Any other failure (capability missing, unavailable, etc.) falls
+      // through to the plain-link path below instead of leaving the
+      // viewer with no way to get the file.
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
 function formatPalletBatchDate(timestamp) {
   const d = new Date(timestamp);
   const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -827,9 +861,7 @@ function renderPalletLabelsScreen(root) {
         </p>
         ${
           batch.sourceFileDataUrl
-            ? `<a class="btn btn-sm mt-sm" href="${batch.sourceFileDataUrl}" download="${escapeHtml(
-                batch.filename || 'packing-slip.pdf'
-              )}">Download original packing slip PDF</a>`
+            ? `<button type="button" class="btn btn-sm mt-sm" id="pallet-download-source-btn">Download original packing slip PDF</button>`
             : ''
         }
         <div class="delivery-label-header mt-sm">
@@ -850,6 +882,20 @@ function renderPalletLabelsScreen(root) {
       setPrintPageSize('6in 4in');
       window.print();
     });
+
+    const downloadBtn = document.getElementById('pallet-download-source-btn');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => {
+        downloadBtn.disabled = true;
+        triggerFileDownload(batch.sourceFileDataUrl, batch.filename || 'packing-slip.pdf')
+          .catch((err) => {
+            showToast(`Couldn't download the file: ${err && err.message ? err.message : 'unknown error'}`);
+          })
+          .finally(() => {
+            downloadBtn.disabled = false;
+          });
+      });
+    }
 
     document.getElementById('rename-pallet-batch-btn').addEventListener('click', () => {
       const nameRow = document.getElementById('pallet-batch-name-row');
