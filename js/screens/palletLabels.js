@@ -51,6 +51,35 @@ function buildPalletQrPayload({ name, flavour, quantity, bbe, batchCodes }) {
   return `${name} - ${flavour} | QTY ${quantity} | BBE ${bbe} | BATCH ${batchForQr}`;
 }
 
+// A single pallet label's markup — top-level (not nested in
+// renderPalletLabelsScreen) so the Dashboard's Last Shipment widget can
+// reuse it for a label preview without duplicating the layout.
+function labelHtml(pallet, index) {
+  const payload = buildPalletQrPayload(pallet);
+  const qr = qrcode(0, 'M');
+  qr.addData(payload);
+  qr.make();
+  return `
+    <div class="pallet-label" data-pallet-index="${index}">
+      <div class="pallet-label-top">
+        <div class="pallet-label-name-block">
+          <div class="pallet-label-name">${escapeHtml(pallet.name)}</div>
+          <div class="pallet-label-flavour">${escapeHtml(pallet.flavour)}</div>
+        </div>
+      </div>
+      <div class="pallet-label-divider"></div>
+      <div class="pallet-label-bottom">
+        <div class="pallet-label-info">
+          <div>QTY ${escapeHtml(String(pallet.quantity))}</div>
+          <div>BBE ${escapeHtml(pallet.bbe)}</div>
+          <div>BATCH ${escapeHtml(pallet.batchCodes.join(', '))}</div>
+        </div>
+        <div class="pallet-label-qr">${qr.createSvgTag(4)}</div>
+      </div>
+    </div>
+  `;
+}
+
 // Shrinks the name+flavour block's font size until it fits the available
 // height above the info/QR row, at the label's full width. A simplified
 // stand-in for the spec's dynamic text-fit algorithm — because this region
@@ -297,6 +326,16 @@ function formatPalletBatchDate(timestamp) {
   return `${datePart}, ${timePart}`;
 }
 
+// Set by openPalletLabelBatch() so a deep link (the Dashboard's Last
+// Shipment widget) can land straight on one past batch's detail view
+// instead of the Pallet Labels screen's default New Batch step.
+let pendingPalletHistoryBatchId = null;
+
+function openPalletLabelBatch(batchId) {
+  pendingPalletHistoryBatchId = batchId;
+  AppRouter.goTo('palletLabels');
+}
+
 function renderPalletLabelsScreen(root) {
   let rowCounter = 0;
   function nextRowId() {
@@ -310,7 +349,13 @@ function renderPalletLabelsScreen(root) {
   let currentSourceFile = null;
   let currentSourceFileDataUrl = null;
 
-  renderInputStep();
+  if (pendingPalletHistoryBatchId) {
+    const batchId = pendingPalletHistoryBatchId;
+    pendingPalletHistoryBatchId = null;
+    renderBatchDetail(batchId);
+  } else {
+    renderInputStep();
+  }
 
   function subNavHtml(active) {
     return `
@@ -356,7 +401,7 @@ function renderPalletLabelsScreen(root) {
       <div class="card">
         <h2>Pallet Labels</h2>
         <p class="helper-text">
-          Upload the packing slip PDF to fill in the lines below automatically, or enter them by hand. Every
+          Upload the packing slip PDF to generate pallet labels. Review the imported lines below &mdash; every
           pallet's quantity must add up to the grand total exactly before labels are produced.
         </p>
         <label class="upload-dropzone" id="pallet-upload-dropzone" for="pallet-file-input">
@@ -364,7 +409,7 @@ function renderPalletLabelsScreen(root) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </span>
           <span class="upload-dropzone-text">Drag &amp; drop the packing slip PDF here, or click to choose a file</span>
-          <span class="upload-dropzone-hint">PDF only &mdash; photos aren&rsquo;t auto-read yet, enter those rows manually below.</span>
+          <span class="upload-dropzone-hint">PDF only &mdash; a digital export with real text, not a scanned photo.</span>
         </label>
         <input type="file" id="pallet-file-input" accept=".pdf,application/pdf" hidden />
         <div id="pallet-import-status"></div>
@@ -385,7 +430,6 @@ function renderPalletLabelsScreen(root) {
             <tbody id="pallet-lines-body"></tbody>
           </table>
         </div>
-        <button type="button" class="btn mt-sm" id="pallet-add-row-btn">+ Add row</button>
 
         <div class="field mt-sm">
           <label>Grand total (from the packing slip)</label>
@@ -439,8 +483,6 @@ function renderPalletLabelsScreen(root) {
       tbody.appendChild(tr);
     }
 
-    addRow();
-    document.getElementById('pallet-add-row-btn').addEventListener('click', () => addRow());
     document.getElementById('pallet-generate-btn').addEventListener('click', attemptGenerate);
     wirePdfImport(addRow, tbody);
     wireSubNav();
@@ -455,7 +497,7 @@ function renderPalletLabelsScreen(root) {
     function handleFile(file) {
       const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
       if (!looksLikePdf) {
-        showToast('Only PDF packing slips can be auto-imported right now — enter image-based slips manually below.');
+        showToast('Only PDF packing slips can be imported right now — photos and scanned images aren’t supported.');
         return;
       }
 
@@ -484,7 +526,8 @@ function renderPalletLabelsScreen(root) {
             summaryEl.innerHTML = `
               <p class="pallet-totals-mismatch">
                 Couldn&rsquo;t find any recognisable packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
-                It may be a scanned image rather than a digital PDF &mdash; enter the lines manually below.
+                It may be a scanned image rather than a digital PDF with real text &mdash; try exporting it directly
+                from the system that made it, or a different file.
               </p>
             `;
             return;
@@ -518,7 +561,7 @@ function renderPalletLabelsScreen(root) {
           summaryEl.innerHTML = `
             <p class="pallet-totals-mismatch">
               Couldn&rsquo;t read &ldquo;${escapeHtml(file.name)}&rdquo;: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
-              Enter the lines manually below.
+              Try the file again, or a different export of the same packing slip.
             </p>
           `;
         });
@@ -569,7 +612,7 @@ function renderPalletLabelsScreen(root) {
       });
     }
     if (!lines.length) {
-      return { error: 'Add at least one line from the packing slip' };
+      return { error: 'Upload a packing slip PDF first' };
     }
     return { lines };
   }
@@ -683,32 +726,6 @@ function renderPalletLabelsScreen(root) {
       missingWrap.innerHTML = '';
       onSaved();
     });
-  }
-
-  function labelHtml(pallet, index, total) {
-    const payload = buildPalletQrPayload(pallet);
-    const qr = qrcode(0, 'M');
-    qr.addData(payload);
-    qr.make();
-    return `
-      <div class="pallet-label" data-pallet-index="${index}">
-        <div class="pallet-label-top">
-          <div class="pallet-label-name-block">
-            <div class="pallet-label-name">${escapeHtml(pallet.name)}</div>
-            <div class="pallet-label-flavour">${escapeHtml(pallet.flavour)}</div>
-          </div>
-        </div>
-        <div class="pallet-label-divider"></div>
-        <div class="pallet-label-bottom">
-          <div class="pallet-label-info">
-            <div>QTY ${escapeHtml(String(pallet.quantity))}</div>
-            <div>BBE ${escapeHtml(pallet.bbe)}</div>
-            <div>BATCH ${escapeHtml(pallet.batchCodes.join(', '))}</div>
-          </div>
-          <div class="pallet-label-qr">${qr.createSvgTag(4)}</div>
-        </div>
-      </div>
-    `;
   }
 
   function renderPalletPreview(pallets) {

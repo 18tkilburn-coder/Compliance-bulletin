@@ -9,10 +9,42 @@
 // registered numbers and are never guessed; if one isn't known yet, ask
 // before generating.
 
+function formatBarcodeBatchDate(timestamp) {
+  const d = new Date(timestamp);
+  const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return `${datePart}, ${timePart}`;
+}
+
 function renderBarcodeLabelsScreen(root) {
   let selectedProduct = null;
 
+  renderInputStep();
+
+  function subNavHtml(active) {
+    return `
+      <div class="sub-tabs">
+        <button type="button" class="sub-tab-btn${active === 'new' ? ' active' : ''}" data-subtab="new">New Label</button>
+        <button type="button" class="sub-tab-btn${active === 'history' ? ' active' : ''}" data-subtab="history">Past Barcode Labels</button>
+      </div>
+    `;
+  }
+
+  function wireSubNav() {
+    document.querySelectorAll('.sub-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.subtab === 'new') {
+          renderInputStep();
+        } else {
+          renderHistoryList();
+        }
+      });
+    });
+  }
+
+  function renderInputStep() {
   root.innerHTML = `
+    ${subNavHtml('new')}
     <div class="card" id="barcode-input-card">
       <h2>Barcode Labels</h2>
       <p class="helper-text">
@@ -59,6 +91,7 @@ function renderBarcodeLabelsScreen(root) {
   `;
 
   renderProductField();
+  wireSubNav();
 
   const eanInput = document.getElementById('barcode-ean');
   const skuInput = document.getElementById('barcode-sku');
@@ -158,8 +191,10 @@ function renderBarcodeLabelsScreen(root) {
       showToast('EAN check digit is invalid — double-check the number before printing');
     }
 
+    Store.addBarcodeLabelBatch({ ean, sku, description, variant, output });
     renderBarcodePreview({ ean, sku, description, variant, output });
   });
+  }
 
   function renderBarcodePreview({ ean, sku, description, variant, output }) {
     const previewWrap = document.getElementById('barcode-preview-wrap');
@@ -222,5 +257,137 @@ function renderBarcodeLabelsScreen(root) {
       window.print();
     });
     previewWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ----- Past Barcode Labels (history log) -----
+
+  function renderHistoryList() {
+    const batches = Store.getBarcodeLabelBatches();
+
+    root.innerHTML = `
+      ${subNavHtml('history')}
+      <div class="card">
+        <h2>Past Barcode Labels</h2>
+        ${
+          batches.length
+            ? `<div class="delivery-history-list" id="barcode-history-list">${batches
+                .map(
+                  (b) => `
+                <div class="delivery-history-row" data-batch-id="${escapeHtml(b.id)}" role="button" tabindex="0">
+                  <div class="delivery-history-main">
+                    <div class="delivery-history-filename">${escapeHtml(b.description)}${
+                    b.variant ? ` &mdash; ${escapeHtml(b.variant)}` : ''
+                  }</div>
+                    <div class="delivery-history-meta">
+                      Generated ${escapeHtml(formatBarcodeBatchDate(b.generatedAt))} &middot;
+                      ${escapeHtml(b.sku || 'No SKU')} &middot; EAN ${escapeHtml(b.ean)} &middot;
+                      ${b.output === 'single' ? '1 label' : 'A4 sheet (10 copies)'}
+                    </div>
+                  </div>
+                  <div class="delivery-history-row-right">
+                    <button type="button" class="btn btn-sm btn-danger barcode-batch-delete-btn" data-batch-id="${escapeHtml(
+                      b.id
+                    )}" aria-label="Delete batch">Delete</button>
+                  </div>
+                </div>
+              `
+                )
+                .join('')}</div>`
+            : '<div class="empty-state">No barcode labels generated yet. Create one from the New Label tab.</div>'
+        }
+      </div>
+    `;
+    wireSubNav();
+
+    const list = document.getElementById('barcode-history-list');
+    if (!list) return;
+
+    function handleActivate(e) {
+      const deleteBtn = e.target.closest('.barcode-batch-delete-btn');
+      if (deleteBtn) {
+        e.stopPropagation();
+        confirmDeleteBarcodeBatchRow(deleteBtn.dataset.batchId);
+        return;
+      }
+      const row = e.target.closest('.delivery-history-row');
+      if (row) renderBatchDetail(row.dataset.batchId);
+    }
+
+    list.addEventListener('click', handleActivate);
+    list.addEventListener('keydown', (e) => {
+      if (e.target.closest('.barcode-batch-delete-btn')) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleActivate(e);
+      }
+    });
+  }
+
+  function confirmDeleteBarcodeBatchRow(id) {
+    const rowEl = document.querySelector(`.delivery-history-row[data-batch-id="${id}"]`);
+    if (!rowEl) return;
+    const batch = Store.getBarcodeLabelBatchById(id);
+
+    rowEl.removeAttribute('role');
+    rowEl.removeAttribute('tabindex');
+    rowEl.innerHTML = `
+      <div class="confirm-prompt delivery-row-confirm">
+        <p class="confirm-message">Delete &ldquo;${escapeHtml(
+          batch ? batch.description : 'this label'
+        )}&rdquo;? This removes it from the history log permanently.</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn" id="cancel-delete-barcode-batch">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-delete-barcode-batch">Yes, delete</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('cancel-delete-barcode-batch').addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderHistoryList();
+    });
+    document.getElementById('confirm-delete-barcode-batch').addEventListener('click', (e) => {
+      e.stopPropagation();
+      Store.deleteBarcodeLabelBatch(id);
+      showToast('Barcode label deleted');
+      renderHistoryList();
+    });
+  }
+
+  function renderBatchDetail(batchId) {
+    const batch = Store.getBarcodeLabelBatchById(batchId);
+    if (!batch) {
+      renderHistoryList();
+      return;
+    }
+
+    root.innerHTML = `
+      ${subNavHtml('history')}
+      <div class="card">
+        <div class="delivery-label-header">
+          <h2>${escapeHtml(batch.description)}</h2>
+          <button type="button" class="btn btn-sm btn-danger" id="delete-barcode-batch-detail-btn">Delete</button>
+        </div>
+        <p class="helper-text">
+          Generated ${escapeHtml(formatBarcodeBatchDate(batch.generatedAt))} &middot; ${escapeHtml(batch.sku || 'No SKU')}
+          &middot; EAN ${escapeHtml(batch.ean)}${batch.variant ? ` &middot; ${escapeHtml(batch.variant)}` : ''}
+        </p>
+      </div>
+      <div id="barcode-preview-wrap"></div>
+    `;
+    wireSubNav();
+
+    renderBarcodePreview({
+      ean: batch.ean,
+      sku: batch.sku,
+      description: batch.description,
+      variant: batch.variant,
+      output: batch.output,
+    });
+
+    document.getElementById('delete-barcode-batch-detail-btn').addEventListener('click', () => {
+      Store.deleteBarcodeLabelBatch(batchId);
+      showToast('Barcode label deleted');
+      renderHistoryList();
+    });
   }
 }

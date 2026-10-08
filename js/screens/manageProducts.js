@@ -80,7 +80,34 @@ function renderManageProductsScreen(root) {
       <p class="helper-text" id="product-count-label"></p>
       <div class="product-list" id="product-list"></div>
     </div>
+    <div class="card">
+      <h2>Pallet Size Limits</h2>
+      <p class="helper-text">
+        Max quantity per pallet for each product weight/size &mdash; used by the Pallet Labels generator to split a
+        packing-slip line into pallets. A size is added here automatically the first time Pallet Labels needs one
+        it doesn't recognise, or add one directly below. Never guessed or borrowed from a similar size.
+      </p>
+      <div class="table-scroll">
+        <table class="line-items-table" id="pallet-limits-table">
+          <thead>
+            <tr>
+              <th>Size</th>
+              <th>Max qty per pallet</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="pallet-limits-body"></tbody>
+        </table>
+      </div>
+      <div class="inline-form-actions mt-sm">
+        <input type="text" id="new-pallet-size-input" placeholder="e.g. 1kg" />
+        <input type="number" id="new-pallet-limit-input" placeholder="e.g. 288" min="1" />
+        <button type="button" class="btn btn-primary" id="add-pallet-limit-btn">Add</button>
+      </div>
+    </div>
   `;
+
+  renderPalletLimitsTable();
 
   document.getElementById('refresh-products-btn').addEventListener('click', () => {
     const added = Store.refreshProductsFromCatalog();
@@ -210,6 +237,75 @@ function renderManageProductsScreen(root) {
       }
       showToast(`"${product.name}" deleted from the catalogue`);
       renderProductList();
+    });
+  }
+
+  function renderPalletLimitsTable() {
+    const limits = Store.getPalletLimits();
+    const sizes = Object.keys(limits).sort();
+    const body = document.getElementById('pallet-limits-body');
+
+    body.innerHTML = sizes.length
+      ? sizes
+          .map(
+            (size) => `
+        <tr data-size="${escapeHtml(size)}">
+          <td>${escapeHtml(size)}</td>
+          <td><input type="number" class="pallet-limit-edit-input" min="1" value="${limits[size]}" data-size="${escapeHtml(
+              size
+            )}" /></td>
+          <td><button type="button" class="btn btn-sm btn-danger pallet-limit-delete-btn" data-size="${escapeHtml(
+            size
+          )}">Delete</button></td>
+        </tr>
+      `
+          )
+          .join('')
+      : '<tr><td colspan="3"><div class="empty-state">No pallet sizes recorded yet.</div></td></tr>';
+
+    body.querySelectorAll('.pallet-limit-edit-input').forEach((input) => {
+      input.addEventListener('change', () => {
+        const value = Number(input.value);
+        if (!value || value <= 0) {
+          showToast('Enter a max quantity greater than zero');
+          renderPalletLimitsTable();
+          return;
+        }
+        Store.setPalletLimit(input.dataset.size, value);
+        showToast(`Pallet limit for "${input.dataset.size}" updated`);
+      });
+    });
+
+    body.querySelectorAll('.pallet-limit-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        Store.deletePalletLimit(btn.dataset.size);
+        showToast(`Removed pallet limit for "${btn.dataset.size}"`);
+        renderPalletLimitsTable();
+      });
+    });
+
+    document.getElementById('add-pallet-limit-btn').addEventListener('click', () => {
+      const sizeInput = document.getElementById('new-pallet-size-input');
+      const limitInput = document.getElementById('new-pallet-limit-input');
+      const size = sizeInput.value.trim().toLowerCase().replace(/\s+/g, '');
+      const limit = Number(limitInput.value);
+
+      if (!size) {
+        showToast('Enter a size, e.g. "1kg"');
+        sizeInput.focus();
+        return;
+      }
+      if (!limit || limit <= 0) {
+        showToast('Enter a max quantity greater than zero');
+        limitInput.focus();
+        return;
+      }
+
+      Store.setPalletLimit(size, limit);
+      showToast(`Pallet limit for "${size}" saved`);
+      sizeInput.value = '';
+      limitInput.value = '';
+      renderPalletLimitsTable();
     });
   }
 }

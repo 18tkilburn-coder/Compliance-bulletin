@@ -460,6 +460,17 @@ input:focus, select:focus {
   margin-top: 10px;
 }
 
+.inline-form-actions input[type="text"],
+.inline-form-actions input[type="number"] {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-form-actions .btn {
+  flex-shrink: 0;
+}
+
 /* Search screen */
 .search-input-wrap {
   margin-bottom: 16px;
@@ -1129,6 +1140,93 @@ input:focus, select:focus {
 .quick-action-desc {
   font-size: 0.8rem;
   color: var(--color-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-action-card {
+    transition: none;
+  }
+
+  .quick-action-card:hover,
+  .quick-action-card:focus-visible {
+    transform: none;
+  }
+}
+
+/* Last Shipment widget */
+.last-shipment-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.last-shipment-info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.last-shipment-name {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.last-shipment-sub {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.last-shipment-stats {
+  display: flex;
+  gap: 22px;
+  margin: 14px 0;
+}
+
+.last-shipment-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.last-shipment-stat strong {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+}
+
+.last-shipment-stat span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.last-shipment-preview {
+  width: 202px;
+  height: 134px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.last-shipment-preview-inner {
+  width: 576px;
+  transform: scale(0.35);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.last-shipment-preview-inner .pallet-label {
+  max-width: none;
+  border: none;
+}
+
+@media (max-width: 480px) {
+  .last-shipment-preview {
+    display: none;
+  }
 }
 
 #dashboard-recent-deliveries {
