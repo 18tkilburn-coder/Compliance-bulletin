@@ -13,6 +13,7 @@ const Store = (() => {
     deliveries: 'per4m_deliveries',
     palletLimits: 'per4m_pallet_limits',
     palletLabelBatches: 'per4m_pallet_label_batches',
+    barcodeLabelBatches: 'per4m_barcode_label_batches',
     // Bumped to v4 to force a reseed onto the full real PER4M product
     // catalogue (replacing the earlier placeholder products).
     seeded: 'per4m_seeded_v5',
@@ -190,6 +191,13 @@ const Store = (() => {
   function setPalletLimit(size, maxQty) {
     const limits = getPalletLimits();
     limits[size] = Number(maxQty);
+    save(KEYS.palletLimits, limits);
+    return limits;
+  }
+
+  function deletePalletLimit(size) {
+    const limits = getPalletLimits();
+    delete limits[size];
     save(KEYS.palletLimits, limits);
     return limits;
   }
@@ -538,6 +546,37 @@ const Store = (() => {
     save(KEYS.palletLabelBatches, batches);
   }
 
+  // Permanent history of every generated barcode label, so past runs stay
+  // browsable and reprintable without re-entering the product's details.
+  function addBarcodeLabelBatch({ ean, sku, description, variant, output }) {
+    const batches = load(KEYS.barcodeLabelBatches, []);
+    const record = {
+      id: uid('barcodebatch'),
+      ean,
+      sku,
+      description,
+      variant: variant || '',
+      output,
+      generatedAt: Date.now(),
+    };
+    batches.push(record);
+    save(KEYS.barcodeLabelBatches, batches);
+    return record;
+  }
+
+  function getBarcodeLabelBatches() {
+    return load(KEYS.barcodeLabelBatches, []).sort((a, b) => b.generatedAt - a.generatedAt);
+  }
+
+  function getBarcodeLabelBatchById(id) {
+    return getBarcodeLabelBatches().find((b) => b.id === id) || null;
+  }
+
+  function deleteBarcodeLabelBatch(id) {
+    const batches = load(KEYS.barcodeLabelBatches, []).filter((b) => b.id !== id);
+    save(KEYS.barcodeLabelBatches, batches);
+  }
+
   // Small live snapshot shown on the portal gate so it feels connected to
   // real data rather than a static splash screen.
   function getGateStats() {
@@ -586,10 +625,15 @@ const Store = (() => {
     refreshProductsFromCatalog,
     getPalletLimits,
     setPalletLimit,
+    deletePalletLimit,
     addPalletLabelBatch,
     getPalletLabelBatches,
     getPalletLabelBatchById,
     renamePalletLabelBatch,
     deletePalletLabelBatch,
+    addBarcodeLabelBatch,
+    getBarcodeLabelBatches,
+    getBarcodeLabelBatchById,
+    deleteBarcodeLabelBatch,
   };
 })();

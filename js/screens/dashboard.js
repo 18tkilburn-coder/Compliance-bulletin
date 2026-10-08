@@ -133,6 +133,7 @@ function renderDashboardScreen(root) {
       </div>
     </div>
 
+    ${isManager ? dashboardLastShipmentHtml() : ''}
     ${isManager ? dashboardRecentDeliveriesHtml() : ''}
   `;
 
@@ -154,6 +155,11 @@ function renderDashboardScreen(root) {
     }
   });
 
+  const openShipmentBtn = document.getElementById('dashboard-open-shipment-btn');
+  if (openShipmentBtn) {
+    openShipmentBtn.addEventListener('click', () => openPalletLabelBatch(openShipmentBtn.dataset.batchId));
+  }
+
   const deliveriesEl = document.getElementById('dashboard-recent-deliveries');
   if (deliveriesEl) {
     deliveriesEl.addEventListener('click', () => AppRouter.goTo('delivery'));
@@ -164,6 +170,67 @@ function renderDashboardScreen(root) {
       }
     });
   }
+}
+
+function dashboardLastShipmentHtml() {
+  const batches = Store.getPalletLabelBatches();
+  const batch = batches[0];
+
+  if (!batch) {
+    return `
+      <div class="card last-shipment-card">
+        <h2>Last Shipment</h2>
+        <div class="empty-state">No pallet labels generated yet.</div>
+      </div>
+    `;
+  }
+
+  const distinctProducts = [...new Set(batch.pallets.map((p) => p.name))];
+  const productSummary = distinctProducts.length === 1 ? distinctProducts[0] : `${distinctProducts.length} products`;
+  const previewPallet = batch.pallets[0];
+  const dateLabel = new Date(batch.generatedAt).toLocaleDateString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  return `
+    <div class="card last-shipment-card">
+      <h2>Last Shipment</h2>
+      <div class="last-shipment-body">
+        <div class="last-shipment-info">
+          <div class="last-shipment-name">${escapeHtml(batch.name)}</div>
+          <div class="last-shipment-sub">${escapeHtml(productSummary)}</div>
+          <div class="last-shipment-stats">
+            <div class="last-shipment-stat">
+              <strong>${batch.pallets.length}</strong>
+              <span>label${batch.pallets.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="last-shipment-stat">
+              <strong>${batch.grandTotal.toLocaleString()}</strong>
+              <span>units</span>
+            </div>
+            <div class="last-shipment-stat">
+              <strong>6&times;4&quot;</strong>
+              <span>label size</span>
+            </div>
+          </div>
+          <p class="helper-text">Generated ${escapeHtml(dateLabel)}</p>
+          <button type="button" class="btn btn-primary btn-sm" id="dashboard-open-shipment-btn" data-batch-id="${escapeHtml(
+            batch.id
+          )}">Open &amp; Print</button>
+        </div>
+        ${
+          previewPallet
+            ? `
+        <div class="last-shipment-preview">
+          <div class="last-shipment-preview-inner">${labelHtml(previewPallet, 0)}</div>
+        </div>`
+            : ''
+        }
+      </div>
+    </div>
+  `;
 }
 
 function dashboardRecentDeliveriesHtml() {
