@@ -254,6 +254,19 @@ input:focus, select:focus {
   cursor: not-allowed;
 }
 
+.link-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .btn:disabled:hover {
   background: var(--color-white);
   color: var(--color-dark-grey);
