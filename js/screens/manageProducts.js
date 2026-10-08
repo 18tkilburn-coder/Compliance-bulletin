@@ -1,6 +1,52 @@
-// Manage Products screen: view, edit, and delete catalogue products.
-// Editing is also reachable from the Put-Away product dropdown via the same
-// openProductEditModal() function, so both entry points stay in sync.
+// Manage Products screen: search, filter, sort, edit, and delete catalogue
+// products. Editing is also reachable from the Put-Away product dropdown via
+// the same openProductEditModal() function, so both entry points stay in sync.
+
+const PRODUCT_FILTER_OPTIONS = [
+  { value: 'all', label: 'All products' },
+  { value: 'missing-sku', label: 'Missing SKU' },
+  { value: 'missing-ean', label: 'Missing EAN' },
+  { value: 'in-use', label: 'In active stock' },
+  { value: 'unused', label: 'Not in active stock' },
+];
+
+const PRODUCT_SORT_OPTIONS = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'entries-desc', label: 'Active entries (most first)' },
+  { value: 'entries-asc', label: 'Active entries (least first)' },
+];
+
+function matchesProductFilter(product, activeCount, filterValue) {
+  switch (filterValue) {
+    case 'missing-sku':
+      return !product.sku;
+    case 'missing-ean':
+      return !product.ean;
+    case 'in-use':
+      return activeCount > 0;
+    case 'unused':
+      return activeCount === 0;
+    case 'all':
+    default:
+      return true;
+  }
+}
+
+function sortProductRows(rows, sortValue) {
+  const sorted = rows.slice();
+  switch (sortValue) {
+    case 'name-desc':
+      return sorted.sort((a, b) => b.product.name.localeCompare(a.product.name));
+    case 'entries-desc':
+      return sorted.sort((a, b) => b.count - a.count || a.product.name.localeCompare(b.product.name));
+    case 'entries-asc':
+      return sorted.sort((a, b) => a.count - b.count || a.product.name.localeCompare(b.product.name));
+    case 'name-asc':
+    default:
+      return sorted.sort((a, b) => a.product.name.localeCompare(b.product.name));
+  }
+}
 
 function renderManageProductsScreen(root) {
   root.innerHTML = `
@@ -14,6 +60,24 @@ function renderManageProductsScreen(root) {
         Prototype note: a static page can't live-query per4mbetter.com from the browser (no cross-origin access) —
         the real build would run this check on a server. Existing products and any edits you've made are never touched.
       </p>
+      <div class="search-input-wrap">
+        <input type="text" id="product-search" placeholder="Search by product name, SKU, or EAN&hellip;" autocomplete="off" />
+      </div>
+      <div class="product-toolbar">
+        <div class="field">
+          <label>Filter</label>
+          <select id="product-filter">
+            ${PRODUCT_FILTER_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Sort by</label>
+          <select id="product-sort">
+            ${PRODUCT_SORT_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <p class="helper-text" id="product-count-label"></p>
       <div class="product-list" id="product-list"></div>
     </div>
   `;
@@ -28,20 +92,55 @@ function renderManageProductsScreen(root) {
     renderProductList();
   });
 
+  const searchInput = document.getElementById('product-search');
+  const filterSelect = document.getElementById('product-filter');
+  const sortSelect = document.getElementById('product-sort');
+
+  searchInput.addEventListener('input', renderProductList);
+  filterSelect.addEventListener('change', renderProductList);
+  sortSelect.addEventListener('change', renderProductList);
+
   renderProductList();
 
   function renderProductList() {
-    const products = Store.getProducts();
+    const allProducts = Store.getProducts();
     const listEl = document.getElementById('product-list');
+    const countLabel = document.getElementById('product-count-label');
 
-    if (!products.length) {
+    if (!allProducts.length) {
+      countLabel.textContent = '';
       listEl.innerHTML = '<div class="empty-state">No products in the catalogue yet.</div>';
       return;
     }
 
-    listEl.innerHTML = products
-      .map((p) => {
-        const count = Store.getActiveEntryCountForProduct(p.id);
+    const query = searchInput.value.trim().toLowerCase();
+    const filterValue = filterSelect.value;
+    const sortValue = sortSelect.value;
+
+    let rows = allProducts.map((p) => ({ product: p, count: Store.getActiveEntryCountForProduct(p.id) }));
+
+    if (query) {
+      rows = rows.filter(({ product: p }) => {
+        return (
+          p.name.toLowerCase().includes(query) ||
+          (p.sku && p.sku.toLowerCase().includes(query)) ||
+          (p.ean && p.ean.toLowerCase().includes(query))
+        );
+      });
+    }
+
+    rows = rows.filter(({ product: p, count }) => matchesProductFilter(p, count, filterValue));
+    rows = sortProductRows(rows, sortValue);
+
+    countLabel.textContent = `Showing ${rows.length} of ${allProducts.length} product${allProducts.length === 1 ? '' : 's'}.`;
+
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="empty-state">No products match your search and filters.</div>';
+      return;
+    }
+
+    listEl.innerHTML = rows
+      .map(({ product: p, count }) => {
         return `
         <div class="product-row" id="product-row-${escapeHtml(p.id)}">
           <div class="product-row-main">

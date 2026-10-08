@@ -1123,6 +1123,17 @@ input:focus, select:focus {
 }
 
 /* Manage Products */
+.product-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.product-toolbar .field {
+  flex: 1;
+  min-width: 160px;
+}
+
 .product-list {
   display: grid;
   gap: 10px;
@@ -1807,6 +1818,32 @@ input:focus, select:focus {
 .analysing-text {
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.analysing-state-inline {
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 10px 2px;
+  gap: 10px;
+}
+
+.analysing-state-inline .spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+}
+
+.analysing-state-inline .analysing-text {
+  font-size: 0.85rem;
+}
+
+.pallet-line-flagged {
+  background: var(--color-orange-light);
+}
+
+.pallet-line-flagged td {
+  border-top: 1px solid var(--color-orange);
+  border-bottom: 1px solid var(--color-orange);
 }
 
 .line-items-table {
