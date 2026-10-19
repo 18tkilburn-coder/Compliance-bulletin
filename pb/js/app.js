@@ -81,7 +81,7 @@ const AppRouter = (() => {
   const appShell = document.getElementById('app-shell');
   const header = document.getElementById('app-header');
   const banner = document.getElementById('prototype-banner');
-  const switchBtn = document.getElementById('switch-portal-btn');
+  const logoutBtn = document.getElementById('logout-btn');
   const sidebar = document.getElementById('sidebar');
   const sidebarBackdrop = document.getElementById('sidebar-backdrop');
   const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -174,7 +174,7 @@ const AppRouter = (() => {
     });
   });
 
-  switchBtn.addEventListener('click', () => {
+  logoutBtn.addEventListener('click', () => {
     Portal.clear();
     showGate();
   });
