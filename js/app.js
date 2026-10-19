@@ -82,7 +82,6 @@ const AppRouter = (() => {
   const header = document.getElementById('app-header');
   const banner = document.getElementById('prototype-banner');
   const switchBtn = document.getElementById('switch-portal-btn');
-  const gateStats = document.getElementById('portal-gate-stats');
   const sidebar = document.getElementById('sidebar');
   const sidebarBackdrop = document.getElementById('sidebar-backdrop');
   const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -90,11 +89,6 @@ const AppRouter = (() => {
   const breadcrumb = document.getElementById('breadcrumb');
   const clockEl = document.getElementById('topbar-clock');
   let activeScreen = 'dashboard';
-
-  function renderGateStats() {
-    const stats = Store.getGateStats();
-    gateStats.innerHTML = `<span class="stat-dot" aria-hidden="true"></span>${stats.totalLocations} locations tracked &middot; ${stats.itemsInStock.toLocaleString()} items in stock`;
-  }
 
   function tabKeysForCurrentPortal() {
     return Portal.isManager() ? MANAGER_TAB_KEYS : EMPLOYEE_TAB_KEYS;
@@ -144,7 +138,6 @@ const AppRouter = (() => {
   }
 
   function showGate() {
-    renderGateStats();
     gate.hidden = false;
     appShell.hidden = true;
     closeSidebarDrawer();

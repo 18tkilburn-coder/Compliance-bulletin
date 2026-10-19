@@ -1352,10 +1352,14 @@ input:focus, select:focus {
 }
 
 .portal-gate-mark {
-  font-family: var(--font-heading);
+  /* Deliberately not --font-heading — that stack leads with condensed/
+     narrow display fonts (Arial Narrow, Helvetica Neue Condensed, Oswald),
+     which read too tight for this logotype. Standard-width faces plus
+     positive letter-spacing instead. */
+  font-family: "Helvetica Neue", Arial, sans-serif;
   font-weight: 800;
   font-size: clamp(1.5rem, 7vw, 2.2rem);
-  letter-spacing: -0.01em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--color-white);
   line-height: 1.05;
@@ -1373,35 +1377,7 @@ input:focus, select:focus {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--color-grey-mid);
-  margin: 0 0 22px;
-}
-
-.portal-gate-stats {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.76rem;
-  color: var(--color-grey-mid);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 7px 16px;
-  border-radius: 100px;
-  margin: 0 0 40px;
-  min-height: 15px;
-}
-
-.portal-gate-stats .stat-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-orange);
-  flex-shrink: 0;
-  animation: portal-stat-pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes portal-stat-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  margin: 0 0 34px;
 }
 
 .login-fields {
@@ -1648,10 +1624,6 @@ input:focus, select:focus {
   .portal-card:hover,
   .portal-card:focus-visible {
     transform: none;
-  }
-
-  .portal-gate-stats .stat-dot {
-    animation: none;
   }
 }
 
