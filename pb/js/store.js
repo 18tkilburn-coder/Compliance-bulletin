@@ -18,6 +18,7 @@ const Store = (() => {
     palletLimits: 'pb_pallet_limits',
     palletLabelBatches: 'pb_pallet_label_batches',
     barcodeLabelBatches: 'pb_barcode_label_batches',
+    users: 'pb_users',
     // Bumped to v4 to force a reseed onto the full real PER4M product
     // catalogue (replacing the earlier placeholder products).
     seeded: 'pb_seeded_v5',
@@ -216,6 +217,53 @@ const Store = (() => {
     staff.push(trimmed);
     save(KEYS.staff, staff);
     return trimmed;
+  }
+
+  // A random, readable temporary password — no ambiguous characters
+  // (0/O, 1/l/I) since a manager may need to read it aloud or retype it.
+  function generateTempPassword() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let pw = '';
+    for (let i = 0; i < 10; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    return pw;
+  }
+
+  // User accounts (manager/employee logins) — a record-keeping feature
+  // layered on top of the prototype's existing gate, which still accepts
+  // any email/password; a real build would check against these accounts
+  // and never store a password in plain text the way this demo does.
+  function getUsers() {
+    return load(KEYS.users, []).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  function getUserByEmail(email) {
+    const target = email.trim().toLowerCase();
+    return getUsers().find((u) => u.email.toLowerCase() === target) || null;
+  }
+
+  function addUser({ name, email, role }) {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (getUserByEmail(trimmedEmail)) {
+      return { error: `An account already exists for ${trimmedEmail}` };
+    }
+    const users = load(KEYS.users, []);
+    const user = {
+      id: uid('user'),
+      name: trimmedName,
+      email: trimmedEmail,
+      role,
+      password: generateTempPassword(),
+      createdAt: Date.now(),
+    };
+    users.push(user);
+    save(KEYS.users, users);
+    return { user };
+  }
+
+  function deleteUser(id) {
+    const users = load(KEYS.users, []).filter((u) => u.id !== id);
+    save(KEYS.users, users);
   }
 
   function getLocations() {
@@ -601,6 +649,10 @@ const Store = (() => {
     deleteProduct,
     getStaff,
     addStaffMember,
+    getUsers,
+    getUserByEmail,
+    addUser,
+    deleteUser,
     getLocations,
     getPickingBays,
     findLocations,

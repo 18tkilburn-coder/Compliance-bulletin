@@ -10,6 +10,7 @@ const QUICK_ACTION_DESCRIPTIONS = {
   baysearch: "Look up what's in a picking bay",
   locations: 'Browse racking occupancy',
   products: 'Add, edit, or remove catalogue products',
+  users: 'Create staff logins and manage accounts',
   delivery: 'Upload a delivery note and generate QR labels',
   stocktake: 'Printable snapshot of all current stock',
   barcodeLabels: 'Generate product barcode labels',

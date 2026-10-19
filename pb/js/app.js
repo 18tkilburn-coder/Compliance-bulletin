@@ -13,6 +13,7 @@ const MANAGER_TAB_KEYS = [
   'baysearch',
   'locations',
   'products',
+  'users',
   'delivery',
   'stocktake',
   'barcodeLabels',
@@ -26,6 +27,7 @@ const TAB_LABELS = {
   baysearch: 'Bay Search',
   locations: 'All Locations',
   products: 'Manage Products',
+  users: 'Manage Users',
   delivery: 'Delivery Import',
   stocktake: 'Stock Take',
   barcodeLabels: 'Barcode Labels',
@@ -46,6 +48,8 @@ const TAB_ICONS = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>',
   products:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12h6M9 16h6M9 8h2"/></svg>',
+  users:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.5" cy="8.5" r="2.5"/><path d="M15.5 14.2c2.5.4 4.5 2.6 4.5 5.3"/></svg>',
   delivery:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
   stocktake:
@@ -63,6 +67,7 @@ const SCREENS = {
   baysearch: renderBaySearchScreen,
   locations: renderLocationsScreen,
   products: renderManageProductsScreen,
+  users: renderManageUsersScreen,
   delivery: renderDeliveryImportScreen,
   stocktake: renderStockTakeScreen,
   barcodeLabels: renderBarcodeLabelsScreen,

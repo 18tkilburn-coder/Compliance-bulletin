@@ -608,6 +608,7 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 input[type="text"],
 input[type="number"],
 input[type="date"],
+input[type="email"],
 select {
   width: 100%;
   padding: 10px 12px;
@@ -952,6 +953,50 @@ input:focus, select:focus {
   background: var(--color-white);
   color: var(--color-muted);
   border: 1px solid var(--color-dark-grey);
+}
+
+.status-manager {
+  background: var(--color-dark-grey);
+  color: var(--color-white);
+}
+
+.status-employee {
+  background: var(--color-grey-light);
+  color: var(--color-dark-grey);
+  border: 1px solid var(--color-border);
+}
+
+/* Manage Users */
+.user-created-card {
+  background: var(--color-orange-light);
+  border: 1px solid var(--color-orange);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.user-created-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  color: var(--color-orange-text);
+  margin: 0 0 4px;
+}
+
+.user-created-password-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.user-created-password-row code {
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .empty-state {
