@@ -257,8 +257,10 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 }
 
 .topbar {
-  background: var(--color-orange-light);
-  border-bottom: 1px solid var(--color-border);
+  /* Dark grey, standardized across every screen and both instances —
+     not a brand-tinted colour, so it no longer varies by instance. */
+  background: var(--color-dark-grey);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -271,9 +273,9 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 .sidebar-toggle {
   display: none;
   appearance: none;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: transparent;
-  color: var(--color-dark-grey);
+  color: var(--color-white);
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -298,18 +300,18 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 }
 
 .breadcrumb-role {
-  color: var(--color-muted);
+  color: var(--color-grey-mid);
   white-space: nowrap;
 }
 
 .breadcrumb-sep {
-  color: var(--color-border);
+  color: rgba(255, 255, 255, 0.25);
 }
 
 .breadcrumb-current {
   font-family: var(--font-heading);
   font-weight: 800;
-  color: var(--color-black);
+  color: var(--color-white);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -317,7 +319,7 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 
 .topbar-clock {
   font-size: 0.76rem;
-  color: var(--color-muted);
+  color: var(--color-grey-mid);
   white-space: nowrap;
   flex-shrink: 0;
 }
