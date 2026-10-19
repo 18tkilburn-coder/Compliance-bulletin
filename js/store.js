@@ -20,6 +20,12 @@ const Store = (() => {
     seeded: 'per4m_seeded_v5',
   };
 
+  // Staff logins are shared across the Per4m and PB Wholesale instances —
+  // both are served from the same origin, so this sibling key lives in the
+  // same localStorage. A manager creating or deleting an account on either
+  // system keeps both namespaces in sync (see getUsers/addUser/deleteUser).
+  const SIBLING_USERS_KEY = 'pb_users';
+
   function load(key, fallback) {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
@@ -229,7 +235,19 @@ const Store = (() => {
   // any email/password; a real build would check against these accounts
   // and never store a password in plain text the way this demo does.
   function getUsers() {
-    return load(KEYS.users, []).sort((a, b) => b.createdAt - a.createdAt);
+    const own = load(KEYS.users, []);
+    const sibling = load(SIBLING_USERS_KEY, []);
+    const byId = new Map();
+    own.forEach((u) => byId.set(u.id, u));
+    sibling.forEach((u) => {
+      if (!byId.has(u.id)) byId.set(u.id, u);
+    });
+    const merged = Array.from(byId.values());
+    // Self-heal: the two namespaces drift apart whenever an account is
+    // created or deleted from only one of them, so re-sync both on every read.
+    save(KEYS.users, merged);
+    save(SIBLING_USERS_KEY, merged);
+    return merged.sort((a, b) => b.createdAt - a.createdAt);
   }
 
   function getUserByEmail(email) {
@@ -243,7 +261,7 @@ const Store = (() => {
     if (getUserByEmail(trimmedEmail)) {
       return { error: `An account already exists for ${trimmedEmail}` };
     }
-    const users = load(KEYS.users, []);
+    const users = getUsers();
     const user = {
       id: uid('user'),
       name: trimmedName,
@@ -254,12 +272,14 @@ const Store = (() => {
     };
     users.push(user);
     save(KEYS.users, users);
+    save(SIBLING_USERS_KEY, users);
     return { user };
   }
 
   function deleteUser(id) {
-    const users = load(KEYS.users, []).filter((u) => u.id !== id);
+    const users = getUsers().filter((u) => u.id !== id);
     save(KEYS.users, users);
+    save(SIBLING_USERS_KEY, users);
   }
 
   function getLocations() {
