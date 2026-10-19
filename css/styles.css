@@ -255,7 +255,7 @@ h1, h2, h3, .brand-mark, .btn, .card h2 {
 }
 
 .topbar {
-  background: var(--color-grey-light);
+  background: var(--color-orange-light);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
@@ -1414,6 +1414,24 @@ input:focus, select:focus {
 
 .login-input-wrap input::placeholder {
   color: #6b6b6b;
+}
+
+.login-forgot-password-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-top: 7px;
+  color: var(--color-grey-mid);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-forgot-password-btn:hover,
+.login-forgot-password-btn:focus-visible {
+  color: var(--color-orange);
 }
 
 .login-password-toggle {

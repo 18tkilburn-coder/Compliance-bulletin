@@ -143,9 +143,9 @@ const AppRouter = (() => {
     gate.hidden = false;
     appShell.hidden = true;
     closeSidebarDrawer();
-    const usernameInput = document.getElementById('login-username');
+    const emailInput = document.getElementById('login-email');
     const passwordInput = document.getElementById('login-password');
-    if (usernameInput) usernameInput.value = '';
+    if (emailInput) emailInput.value = '';
     if (passwordInput) {
       passwordInput.value = '';
       passwordInput.type = 'password';
@@ -215,7 +215,7 @@ const AppRouter = (() => {
 })();
 
 // ----- Login page: show/hide password toggle. Cosmetic only — the
-// username/password fields are never read or validated; signing in is
+// email/password fields are never read or validated; signing in is
 // still done by picking a portal card, same as before this redesign. -----
 (() => {
   const toggle = document.getElementById('login-password-toggle');
@@ -230,6 +230,16 @@ const AppRouter = (() => {
     openEye.classList.toggle('is-hidden-icon', !showing);
     closedEye.classList.toggle('is-hidden-icon', showing);
     toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  });
+})();
+
+// ----- Login page: "Forgot password?". Cosmetic only — there's no real
+// account system behind this login, so there's nothing to reset. -----
+(() => {
+  const btn = document.getElementById('login-forgot-password-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    showToast('Demo environment — there’s no password to reset. Any email and password signs you in.');
   });
 })();
 
