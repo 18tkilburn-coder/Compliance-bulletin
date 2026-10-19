@@ -202,6 +202,17 @@ const AppRouter = (() => {
   };
 })();
 
+// ----- System switch link: the real source tree serves this page at
+// /index.html with the PB instance at /pb/index.html, but the single-file
+// Artifact bundle flattens both into sibling files (index.html / pb.html)
+// — swap the link's href to match whichever context actually loaded.
+(() => {
+  const btn = document.getElementById('system-switch-btn');
+  if (!btn) return;
+  const bundled = !!document.getElementById('pdf-worker-b64');
+  btn.href = bundled ? 'pb.html' : 'pb/index.html';
+})();
+
 // ----- Login page: show/hide password toggle. Cosmetic only — the
 // username/password fields are never read or validated; signing in is
 // still done by picking a portal card, same as before this redesign. -----
