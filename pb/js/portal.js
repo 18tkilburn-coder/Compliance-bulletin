@@ -4,7 +4,12 @@
 // before employee/manager access can be trusted.
 
 const Portal = (() => {
-  const KEY = 'pb_portal';
+  // Shared (not per4m_/pb_ prefixed) deliberately: Per4m and PB Wholesale run
+  // on the same origin, so using one key here means your Employee/Manager
+  // role carries across the System Switch button instead of each instance
+  // keeping its own independent, potentially stale session — the same
+  // same-origin trick Store.js uses to share user accounts between the two.
+  const KEY = 'pallet_pal_portal';
 
   function get() {
     return localStorage.getItem(KEY);
