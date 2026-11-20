@@ -33,20 +33,22 @@ function labelHtml(pallet, index) {
   const qr = qrcode(0, 'M');
   qr.addData(payload);
   qr.make();
+  // flavour/bbe/batchCodes are all optional (the Manual Generator, Phase
+  // 3, may omit any of them) — only rendered when actually present.
   return `
     <div class="pallet-label" data-pallet-index="${index}">
       <div class="pallet-label-top">
         <div class="pallet-label-name-block">
           <div class="pallet-label-name">${escapeHtml(pallet.name)}</div>
-          <div class="pallet-label-flavour">${escapeHtml(pallet.flavour)}</div>
+          ${pallet.flavour ? `<div class="pallet-label-flavour">${escapeHtml(pallet.flavour)}</div>` : ''}
         </div>
       </div>
       <div class="pallet-label-divider"></div>
       <div class="pallet-label-bottom">
         <div class="pallet-label-info">
           <div>QTY ${escapeHtml(String(pallet.quantity))}</div>
-          <div>BBE ${escapeHtml(pallet.bbe)}</div>
-          <div>BATCH ${escapeHtml(pallet.batchCodes.join(', '))}</div>
+          ${pallet.bbe ? `<div>BBE ${escapeHtml(pallet.bbe)}</div>` : ''}
+          ${pallet.batchCodes && pallet.batchCodes.length ? `<div>BATCH ${escapeHtml(pallet.batchCodes.join(', '))}</div>` : ''}
         </div>
         <div class="pallet-label-qr">${qr.createSvgTag(4)}</div>
       </div>
@@ -365,6 +367,7 @@ function renderPalletLabelsScreen(root) {
     return `
       <div class="sub-tabs">
         <button type="button" class="sub-tab-btn${active === 'new' ? ' active' : ''}" data-subtab="new">New Batch</button>
+        <button type="button" class="sub-tab-btn${active === 'quick' ? ' active' : ''}" data-subtab="quick">Quick Labels</button>
         <button type="button" class="sub-tab-btn${active === 'history' ? ' active' : ''}" data-subtab="history">Past Pallet Labels</button>
         <button type="button" class="sub-tab-btn${active === 'limits' ? ' active' : ''}" data-subtab="limits">Size Limits</button>
       </div>
@@ -376,6 +379,8 @@ function renderPalletLabelsScreen(root) {
       btn.addEventListener('click', () => {
         if (btn.dataset.subtab === 'new') {
           renderInputStep();
+        } else if (btn.dataset.subtab === 'quick') {
+          renderQuickLabelsTab();
         } else if (btn.dataset.subtab === 'limits') {
           renderSizeLimitsTab();
         } else {
@@ -791,6 +796,187 @@ function renderPalletLabelsScreen(root) {
         btn.disabled = false;
         btn.textContent = originalText;
       }
+    });
+  }
+
+  // ----- Quick Labels (manual entry, no packing slip, Phase 3) -----
+  // Bypasses the packing-slip workflow entirely: each row IS one label,
+  // exactly as entered — no pallet-size splitting, no grand-total check
+  // (LabelEngine's 'free-form' validation mode, see decision C.4). Good
+  // for a one-off reprint or a couple of extra pallets an employee already
+  // knows the details of. Best Before and Batch code are optional per row
+  // — leaving either blank simply omits it from that label (the "choose
+  // which optional information appears" requirement). Generated batches
+  // are saved to the same Past Pallet Labels history as the automatic
+  // path, so history/reprinting is shared across both workflows.
+
+  let quickRowCounter = 0;
+  function nextQuickRowId() {
+    quickRowCounter += 1;
+    return `qrow_${quickRowCounter}`;
+  }
+
+  function renderQuickLabelsTab() {
+    root.innerHTML = `
+      ${subNavHtml('quick')}
+      <div class="card">
+        <h2>Quick Labels</h2>
+        <p class="helper-text">
+          Build one or more labels by hand &mdash; no packing slip needed. Each row becomes exactly one label;
+          leave Best Before or Batch code blank to leave it off that label.
+        </p>
+        <div class="table-scroll">
+          <table class="line-items-table" id="quick-labels-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Flavour</th>
+                <th>Qty</th>
+                <th>Best Before</th>
+                <th>Batch code(s)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="quick-labels-body"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn mt-sm" id="quick-label-add-btn">+ Add Label</button>
+        <div id="quick-labels-feedback"></div>
+        <button type="button" class="btn btn-primary btn-block mt-sm" id="quick-labels-generate-btn">Generate Labels</button>
+      </div>
+      <div id="pallet-preview-wrap"></div>
+    `;
+    wireSubNav();
+
+    const tbody = document.getElementById('quick-labels-body');
+
+    function addQuickRow(prefill) {
+      const p = prefill || {};
+      const rowId = nextQuickRowId();
+      const tr = document.createElement('tr');
+      tr.dataset.rowId = rowId;
+      const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
+      tr.innerHTML = `
+        <td><input type="text" class="quick-label-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.name || '')}" /></td>
+        <td><input type="text" class="quick-label-flavour" placeholder="optional" value="${escapeHtml(p.flavour || '')}" /></td>
+        <td><input type="number" class="quick-label-qty" min="1" placeholder="e.g. 1" value="${p.quantity || ''}" /></td>
+        <td>
+          <div class="line-item-bbd">
+            <select class="quick-label-bbe-month">
+              <option value="">MM</option>
+              ${bestBeforeMonthOptions()
+                .map((m) => `<option value="${m}"${m === p.bbeMonth ? ' selected' : ''}>${m}</option>`)
+                .join('')}
+            </select>
+            <select class="quick-label-bbe-year">
+              <option value="">YY</option>
+              ${bestBeforeYearOptions()
+                .map((y) => `<option value="${y}"${y === p.bbeYear ? ' selected' : ''}>${y}</option>`)
+                .join('')}
+            </select>
+          </div>
+        </td>
+        <td><input type="text" class="quick-label-batch" placeholder="optional" value="${escapeHtml(batchValue)}" /></td>
+        <td>
+          <button type="button" class="btn btn-sm quick-label-duplicate">Duplicate</button>
+          <button type="button" class="btn btn-sm btn-danger quick-label-remove">Remove</button>
+        </td>
+      `;
+      tr.querySelector('.quick-label-remove').addEventListener('click', () => tr.remove());
+      tr.querySelector('.quick-label-duplicate').addEventListener('click', () => {
+        addQuickRow(readQuickRow(tr));
+      });
+      tbody.appendChild(tr);
+    }
+
+    function readQuickRow(tr) {
+      return {
+        name: tr.querySelector('.quick-label-product').value.trim(),
+        flavour: tr.querySelector('.quick-label-flavour').value.trim(),
+        quantity: tr.querySelector('.quick-label-qty').value,
+        bbeMonth: tr.querySelector('.quick-label-bbe-month').value,
+        bbeYear: tr.querySelector('.quick-label-bbe-year').value,
+        batchCodes: tr
+          .querySelector('.quick-label-batch')
+          .value.trim()
+          .split(',')
+          .map((b) => b.trim())
+          .filter(Boolean),
+      };
+    }
+
+    addQuickRow();
+
+    document.getElementById('quick-label-add-btn').addEventListener('click', () => addQuickRow());
+
+    document.getElementById('quick-labels-generate-btn').addEventListener('click', async () => {
+      const feedbackEl = document.getElementById('quick-labels-feedback');
+      const previewWrap = document.getElementById('pallet-preview-wrap');
+      feedbackEl.innerHTML = '';
+      previewWrap.innerHTML = '';
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (!rows.length) {
+        showToast('Add at least one label first');
+        return;
+      }
+
+      const lines = [];
+      for (const tr of rows) {
+        const raw = readQuickRow(tr);
+        if (!raw.name || !raw.quantity) {
+          showToast('Every label needs at least a product name and a quantity');
+          return;
+        }
+        lines.push({
+          name: raw.name,
+          flavour: raw.flavour,
+          quantity: Number(raw.quantity),
+          bbe: raw.bbeMonth && raw.bbeYear ? formatBestBefore(raw.bbeMonth, raw.bbeYear) : '',
+          batchCodes: raw.batchCodes,
+        });
+      }
+
+      const validation = LabelEngine.validatePalletLines(lines, { mode: 'free-form' });
+      if (!validation.ok) {
+        feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
+        return;
+      }
+
+      // Each row IS one label — no pallet-size splitting applies here.
+      const pallets = lines;
+      const grandTotal = pallets.reduce((sum, p) => sum + p.quantity, 0);
+
+      let batchRecord;
+      try {
+        batchRecord = await PalletLabelsBackend.addPalletLabelBatch({
+          filename: '',
+          sourceFileDataUrl: null,
+          pallets,
+          grandTotal,
+        });
+      } catch (err) {
+        feedbackEl.innerHTML = `
+          <p class="pallet-totals-mismatch">
+            Saving this batch failed: ${escapeHtml(err && err.message ? err.message : 'unknown error')}. Try again.
+          </p>
+        `;
+        return;
+      }
+
+      feedbackEl.innerHTML = `
+        <p class="pallet-totals-ok">
+          ${pallets.length} label${pallets.length === 1 ? '' : 's'} created. Saved to
+          <button type="button" class="link-btn" id="quick-view-history-link">Past Pallet Labels</button>
+          as &ldquo;${escapeHtml(batchRecord.name)}&rdquo;.
+        </p>
+      `;
+      const historyLink = document.getElementById('quick-view-history-link');
+      if (historyLink) {
+        historyLink.addEventListener('click', () => renderBatchDetail(batchRecord.id));
+      }
+
+      renderPalletPreview(pallets);
     });
   }
 

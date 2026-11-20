@@ -39,10 +39,16 @@ const LabelEngine = (() => {
 
   // Batch hyphens become periods in the QR payload only (not on the
   // printed label) — some phone QR readers misread a hyphenated number as
-  // a phone number.
+  // a phone number. flavour/bbe/batchCodes are all optional (the Manual
+  // Generator, Phase 3, may omit any of them) — a blank/empty one is left
+  // out of the payload entirely rather than encoded as an empty segment.
   function buildPalletQrPayload({ name, flavour, quantity, bbe, batchCodes }) {
-    const batchForQr = batchCodes.map((b) => b.replace(/-/g, '.')).join(', ');
-    return `${name} - ${flavour} | QTY ${quantity} | BBE ${bbe} | BATCH ${batchForQr}`;
+    const parts = [flavour ? `${name} - ${flavour}` : name, `QTY ${quantity}`];
+    if (bbe) parts.push(`BBE ${bbe}`);
+    if (batchCodes && batchCodes.length) {
+      parts.push(`BATCH ${batchCodes.map((b) => b.replace(/-/g, '.')).join(', ')}`);
+    }
+    return parts.join(' | ');
   }
 
   // Validation modes (see PALLET_LABELS_V2_DECISION_RECORD.md C.4):
@@ -108,13 +114,14 @@ const LabelEngine = (() => {
 
       let nameSize = 26;
       while (nameSize > 10 && boldFont.widthOfTextAtSize(pallet.name, nameSize) > contentW) nameSize -= 1;
-      let flavourSize = Math.max(8, Math.round(nameSize * 0.6));
-      while (flavourSize > 8 && regularFont.widthOfTextAtSize(pallet.flavour, flavourSize) > contentW) flavourSize -= 1;
+      page.drawText(pallet.name, { x: MARGIN_PT, y: PAGE_H_PT - MARGIN_PT - nameSize, size: nameSize, font: boldFont, color: rgb(0, 0, 0) });
 
-      let y = PAGE_H_PT - MARGIN_PT - nameSize;
-      page.drawText(pallet.name, { x: MARGIN_PT, y, size: nameSize, font: boldFont, color: rgb(0, 0, 0) });
-      y -= flavourSize + 6;
-      page.drawText(pallet.flavour, { x: MARGIN_PT, y, size: flavourSize, font: regularFont, color: rgb(0.2, 0.2, 0.2) });
+      if (pallet.flavour) {
+        let flavourSize = Math.max(8, Math.round(nameSize * 0.6));
+        while (flavourSize > 8 && regularFont.widthOfTextAtSize(pallet.flavour, flavourSize) > contentW) flavourSize -= 1;
+        const flavourY = PAGE_H_PT - MARGIN_PT - nameSize - flavourSize - 6;
+        page.drawText(pallet.flavour, { x: MARGIN_PT, y: flavourY, size: flavourSize, font: regularFont, color: rgb(0.2, 0.2, 0.2) });
+      }
 
       const dividerY = PAGE_H_PT * 0.52;
       page.drawLine({
@@ -124,7 +131,9 @@ const LabelEngine = (() => {
         color: rgb(0.7, 0.7, 0.7),
       });
 
-      const infoLines = [`QTY ${pallet.quantity}`, `BBE ${pallet.bbe}`, `BATCH ${pallet.batchCodes.join(', ')}`];
+      const infoLines = [`QTY ${pallet.quantity}`];
+      if (pallet.bbe) infoLines.push(`BBE ${pallet.bbe}`);
+      if (pallet.batchCodes && pallet.batchCodes.length) infoLines.push(`BATCH ${pallet.batchCodes.join(', ')}`);
       let infoY = dividerY - 22;
       infoLines.forEach((line) => {
         page.drawText(line, { x: MARGIN_PT, y: infoY, size: 12, font: regularFont, color: rgb(0, 0, 0) });
