@@ -24,7 +24,6 @@
 //    asked to — it trusts the database to refuse whatever it should refuse.
 
 const PalletLabelsBackend = (() => {
-  let cachedClient = null;
   let cachedBusinessId = null;
   let cachedForAuthUserId = null;
 
@@ -33,10 +32,7 @@ const PalletLabelsBackend = (() => {
   }
 
   function client() {
-    if (!cachedClient) {
-      cachedClient = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-    }
-    return cachedClient;
+    return SupabaseClient.get();
   }
 
   // Resolves to the signed-in business's own `businesses.id`, or null if

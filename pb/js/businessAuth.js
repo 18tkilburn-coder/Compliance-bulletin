@@ -19,10 +19,7 @@ const BusinessAuth = (() => {
   }
 
   function client() {
-    if (!BusinessAuth._client) {
-      BusinessAuth._client = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-    }
-    return BusinessAuth._client;
+    return SupabaseClient.get();
   }
 
   // True only when a real Supabase project is configured — i.e. whether
