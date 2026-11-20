@@ -19,52 +19,17 @@
 // resolves on the same tick as before and nothing about this screen's
 // behaviour changes.
 
-// Pallet labels drop the "Per4m" brand prefix and the word "Protein" from
-// the packing slip's product text — e.g. "Per4m Advanced Protein 495g"
-// becomes "Advanced 495g" on the printed label.
-function stripProteinWord(text) {
-  return text
-    .replace(/\bPer4m\b/gi, '')
-    .replace(/\bProtein\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Pulls the trailing size token (e.g. "33g", "1.2kg") off a product+size
-// string for the pallet-limit lookup. Falls back to the whole string
-// (lowercased) for sizeless products like "ISOLATE ZERO".
-function parseSizeKey(productSizeText) {
-  const match = productSizeText.match(/(\d+(?:\.\d+)?\s*(?:kg|g))\s*$/i);
-  if (match) return match[1].replace(/\s+/g, '').toLowerCase();
-  return productSizeText.trim().toLowerCase();
-}
-
-// Full pallets of `maxPerPallet` first, remainder last — e.g. 500 at a
-// limit of 168 becomes [168, 168, 164].
-function splitIntoPallets(totalQty, maxPerPallet) {
-  const pallets = [];
-  let remaining = totalQty;
-  while (remaining > 0) {
-    pallets.push(Math.min(maxPerPallet, remaining));
-    remaining -= Math.min(maxPerPallet, remaining);
-  }
-  return pallets;
-}
-
-// Batch hyphens become periods in the QR payload only (not on the printed
-// label) because a phone camera's QR reader treats a hyphenated number like
-// "300926-11" as a phone number and offers to dial it instead of showing
-// the scanned text.
-function buildPalletQrPayload({ name, flavour, quantity, bbe, batchCodes }) {
-  const batchForQr = batchCodes.map((b) => b.replace(/-/g, '.')).join(', ');
-  return `${name} - ${flavour} | QTY ${quantity} | BBE ${bbe} | BATCH ${batchForQr}`;
-}
+// Pallet math, text rules, QR payload shape, and PDF assembly now live in
+// js/labelEngine.js (shared with the Manual Generator, Phase 3) —
+// LabelEngine.stripProteinWord / .parseSizeKey / .splitIntoPallets /
+// .buildPalletQrPayload / .validatePalletLines / .buildPallets /
+// .generatePalletLabelsPdf.
 
 // A single pallet label's markup — top-level (not nested in
 // renderPalletLabelsScreen) so the Dashboard's Last Shipment widget can
 // reuse it for a label preview without duplicating the layout.
 function labelHtml(pallet, index) {
-  const payload = buildPalletQrPayload(pallet);
+  const payload = LabelEngine.buildPalletQrPayload(pallet);
   const qr = qrcode(0, 'M');
   qr.addData(payload);
   qr.make();
@@ -262,8 +227,8 @@ async function importPackingSlipPdf(file) {
     const flagged = g.statedTotal !== null && g.statedTotal !== g.quantity;
     return {
       productText: g.productText,
-      name: stripProteinWord(g.productText),
-      sizeKey: parseSizeKey(g.productText),
+      name: LabelEngine.stripProteinWord(g.productText),
+      sizeKey: LabelEngine.parseSizeKey(g.productText),
       flavour: g.flavour,
       quantity: g.quantity,
       bbeMonth: g.bbeMonth,
@@ -647,8 +612,8 @@ function renderPalletLabelsScreen(root) {
 
       lines.push({
         productText,
-        name: stripProteinWord(productText),
-        sizeKey: parseSizeKey(productText),
+        name: LabelEngine.stripProteinWord(productText),
+        sizeKey: LabelEngine.parseSizeKey(productText),
         flavour,
         quantity: Number(qtyRaw),
         bbe: formatBestBefore(month, year),
@@ -683,32 +648,23 @@ function renderPalletLabelsScreen(root) {
     const grandTotal = Number(grandTotalRaw);
 
     const limits = await PalletLabelsBackend.getPalletLimits();
-    const missingSizes = [...new Set(lines.filter((l) => limits[l.sizeKey] === undefined).map((l) => l.sizeKey))];
 
-    if (missingSizes.length) {
-      renderMissingSizePrompt(missingSizes, () => attemptGenerate());
+    // Missing-size check first, same order as before: a manager should be
+    // asked for a pallet limit even if the total also happens to be wrong
+    // yet, rather than the two warnings fighting over which shows first.
+    const built = LabelEngine.buildPallets(lines, limits);
+    if (built.missingSizes) {
+      renderMissingSizePrompt(built.missingSizes, () => attemptGenerate());
       return;
     }
 
-    const sumQty = lines.reduce((sum, l) => sum + l.quantity, 0);
-    if (sumQty !== grandTotal) {
-      feedbackEl.innerHTML = `
-        <p class="pallet-totals-mismatch">
-          Line quantities add up to ${sumQty.toLocaleString()}, but the grand total is ${grandTotal.toLocaleString()}.
-          Fix the lines or the grand total before generating &mdash; nothing is produced until these match exactly.
-        </p>
-      `;
+    const validation = LabelEngine.validatePalletLines(lines, { mode: 'strict-total-match', grandTotal });
+    if (!validation.ok) {
+      feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
       return;
     }
 
-    const pallets = [];
-    lines.forEach((line) => {
-      const maxPerPallet = limits[line.sizeKey];
-      splitIntoPallets(line.quantity, maxPerPallet).forEach((qty) => {
-        pallets.push({ ...line, quantity: qty });
-      });
-    });
-
+    const pallets = built.pallets;
     const palletSumCheck = pallets.reduce((sum, p) => sum + p.quantity, 0);
 
     let batchRecord;
@@ -793,7 +749,10 @@ function renderPalletLabelsScreen(root) {
       <div class="card pallet-preview-card">
         <div class="delivery-label-header">
           <h2>Pallet Labels</h2>
-          <button type="button" class="btn btn-primary btn-sm" id="print-pallet-labels-btn">Print All</button>
+          <div class="delivery-label-header-actions">
+            <button type="button" class="btn btn-sm" id="download-pallet-labels-btn">Download PDF</button>
+            <button type="button" class="btn btn-primary btn-sm" id="print-pallet-labels-btn">Print All</button>
+          </div>
         </div>
         <p class="helper-text">${pallets.length} label${pallets.length === 1 ? '' : 's'}, one 6 &times; 4&quot; page each.</p>
         <div class="pallet-label-stack" id="pallet-label-stack">${labelsHtml}</div>
@@ -809,7 +768,30 @@ function renderPalletLabelsScreen(root) {
       setPrintPageSize('6in 4in');
       window.print();
     });
+    wireDownloadPdfButton('download-pallet-labels-btn', pallets, 'pallet-labels');
     previewWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Shared by both the fresh-preview and history-detail views: generates a
+  // real PDF via LabelEngine and triggers a download, reusing the same
+  // triggerBlobDownload path Supabase-sourced file downloads already use.
+  function wireDownloadPdfButton(btnId, pallets, filenameBase) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Generating…';
+      try {
+        const blob = await LabelEngine.generatePalletLabelsPdf(pallets);
+        await triggerBlobDownload(blob, `${filenameBase}.pdf`);
+      } catch (err) {
+        showToast(`Couldn't generate the PDF: ${err && err.message ? err.message : 'unknown error'}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    });
   }
 
   // ----- Past Pallet Labels (history log) -----
@@ -939,7 +921,10 @@ function renderPalletLabelsScreen(root) {
         }
         <div class="delivery-label-header mt-sm">
           <h2>Labels</h2>
-          <button type="button" class="btn btn-primary btn-sm" id="print-pallet-batch-btn">Print All</button>
+          <div class="delivery-label-header-actions">
+            <button type="button" class="btn btn-sm" id="download-pallet-batch-btn">Download PDF</button>
+            <button type="button" class="btn btn-primary btn-sm" id="print-pallet-batch-btn">Print All</button>
+          </div>
         </div>
         <div class="pallet-label-stack" id="pallet-batch-label-stack">${labelsHtml}</div>
       </div>
@@ -950,6 +935,8 @@ function renderPalletLabelsScreen(root) {
       const top = block.closest('.pallet-label-top');
       fitPalletNameBlock(block, top.clientHeight);
     });
+
+    wireDownloadPdfButton('download-pallet-batch-btn', batch.pallets, batch.name.replace(/[^\w.\-]+/g, '_'));
 
     document.getElementById('print-pallet-batch-btn').addEventListener('click', () => {
       setPrintPageSize('6in 4in');
