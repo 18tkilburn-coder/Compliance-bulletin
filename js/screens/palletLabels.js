@@ -226,8 +226,47 @@ function parsePackingSlipLines(textLines) {
 async function importPackingSlipPdf(file) {
   const textLines = await extractPdfTextLines(file);
   const { groups, grandTotal } = parsePackingSlipLines(textLines);
+  return { lines: packingSlipGroupsToLines(groups), grandTotal };
+}
 
-  const lines = groups.map((g) => {
+// Phase 4: turns the AI extraction (supabase/functions/extract-packing-slip)
+// into exactly the same group shape parsePackingSlipLines() produces, so
+// both import paths share packingSlipGroupsToLines() and everything after
+// it. Quantities are re-added here from the individual batch rows rather
+// than trusted from the model, so the subtotal/grand-total checks compare
+// real arithmetic against what the sheet itself printed.
+function packingSlipGroupsFromAiExtraction(extraction) {
+  const groups = [];
+  const byKey = new Map();
+  (extraction.products || []).forEach((p) => {
+    const productText = String(p.product_text || '').trim();
+    const flavour = String(p.flavour || '').trim();
+    const key = `${productText}\u0000${flavour}`.toLowerCase();
+    let group = byKey.get(key);
+    if (!group) {
+      group = { productText, flavour, batchCodes: [], quantity: 0, bbeDates: [], statedTotal: null };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    (p.rows || []).forEach((r) => {
+      group.batchCodes.push(String(r.batch_code || '').trim());
+      group.quantity += Number(r.quantity) || 0;
+      group.bbeDates.push(formatBestBefore(String(r.bbe_month).padStart(2, '0'), String(r.bbe_year).slice(-2)));
+    });
+    if (Number.isInteger(p.stated_total)) {
+      group.statedTotal = (group.statedTotal || 0) + p.stated_total;
+    }
+  });
+  const grandTotal = Number.isInteger(extraction.grand_total) ? extraction.grand_total : null;
+  return { groups, grandTotal };
+}
+
+// Shared by the PDF-text parser and the AI extraction: shapes parsed
+// groups into the same line objects readLines() produces from the manual
+// table, flagging any group whose computed sum doesn't match the slip's
+// own "<product> Total" row.
+function packingSlipGroupsToLines(groups) {
+  return groups.map((g) => {
     const flagged = g.statedTotal !== null && g.statedTotal !== g.quantity;
     return {
       productText: g.productText,
@@ -256,8 +295,6 @@ async function importPackingSlipPdf(file) {
         : null,
     };
   });
-
-  return { lines, grandTotal };
 }
 
 // Packing-slip files over this size aren't kept as a copy in the history
@@ -367,6 +404,10 @@ function renderPalletLabelsScreen(root) {
   // log alongside the labels it produced.
   let currentSourceFile = null;
   let currentSourceFileDataUrl = null;
+  // Set when the AI import has already put the file in Storage, so saving
+  // the batch reuses it instead of uploading again.
+  let currentSourceFilePath = null;
+  let aiAvailable = false;
 
   if (pendingPalletHistoryBatchId) {
     const batchId = pendingPalletHistoryBatchId;
@@ -420,8 +461,21 @@ function renderPalletLabelsScreen(root) {
   async function renderInputStep() {
     currentSourceFile = null;
     currentSourceFileDataUrl = null;
+    currentSourceFilePath = null;
 
     const limitsHtml = await limitsReferenceHtml();
+    // Without a signed-in Supabase business there's no Edge Function to
+    // call, so the dropzone text and accepted types stay exactly as before.
+    aiAvailable = await PalletLabelsBackend.aiExtractionAvailable().catch(() => false);
+    const dropzoneText = aiAvailable
+      ? 'Drag &amp; drop the packing slip (PDF or photo) here, or click to choose a file'
+      : 'Drag &amp; drop the packing slip PDF here, or click to choose a file';
+    const dropzoneHint = aiAvailable
+      ? 'PDF or a clear photo (JPEG/PNG). Photos and scanned PDFs are read by AI &mdash; always check every line.'
+      : 'PDF only &mdash; a digital export with real text, not a scanned photo.';
+    const acceptTypes = aiAvailable
+      ? '.pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
+      : '.pdf,application/pdf';
 
     root.innerHTML = `
       ${subNavHtml('new')}
@@ -435,10 +489,10 @@ function renderPalletLabelsScreen(root) {
           <span class="upload-dropzone-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </span>
-          <span class="upload-dropzone-text">Drag &amp; drop the packing slip PDF here, or click to choose a file</span>
-          <span class="upload-dropzone-hint">PDF only &mdash; a digital export with real text, not a scanned photo.</span>
+          <span class="upload-dropzone-text">${dropzoneText}</span>
+          <span class="upload-dropzone-hint">${dropzoneHint}</span>
         </label>
-        <input type="file" id="pallet-file-input" accept=".pdf,application/pdf" hidden />
+        <input type="file" id="pallet-file-input" accept="${acceptTypes}" hidden />
         <div id="pallet-import-status"></div>
         <div id="pallet-import-summary"></div>
         ${limitsHtml}
@@ -535,23 +589,56 @@ function renderPalletLabelsScreen(root) {
     const statusEl = document.getElementById('pallet-import-status');
     const summaryEl = document.getElementById('pallet-import-summary');
 
-    function handleFile(file) {
-      const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-      if (!looksLikePdf) {
-        showToast('Only PDF packing slips can be imported right now — photos and scanned images aren’t supported.');
-        return;
-      }
+    // Bumped on every new file, so a slow AI read of an earlier file can't
+    // overwrite the table after a newer file has been dropped.
+    let importToken = 0;
 
+    function showReadingStatus(file, viaAi) {
       statusEl.innerHTML = `
         <div class="analysing-state analysing-state-inline">
           <div class="spinner" aria-hidden="true"></div>
-          <p class="analysing-text">Reading &ldquo;${escapeHtml(file.name)}&rdquo;&hellip;</p>
+          <p class="analysing-text">${viaAi ? 'Reading with AI' : 'Reading'} &ldquo;${escapeHtml(file.name)}&rdquo;&hellip;${
+            viaAi ? ' This can take up to a minute.' : ''
+          }</p>
         </div>
       `;
+    }
+
+    // Phase 4: photo or scanned PDF -> Edge Function -> the same line shape
+    // as the PDF-text parser.
+    function importWithAi(file, token) {
+      if (token === importToken) showReadingStatus(file, true);
+      return PalletLabelsBackend.extractPackingSlipWithAi(file).then(({ extraction, sourceFilePath }) => {
+        if (token === importToken) currentSourceFilePath = sourceFilePath;
+        const { groups, grandTotal } = packingSlipGroupsFromAiExtraction(extraction);
+        return {
+          lines: packingSlipGroupsToLines(groups),
+          grandTotal,
+          viaAi: true,
+          warnings: Array.isArray(extraction.warnings) ? extraction.warnings : [],
+        };
+      });
+    }
+
+    function handleFile(file) {
+      const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      const looksLikeImage = /^image\/(jpeg|png|webp)$/.test(file.type) || /\.(jpe?g|png|webp)$/i.test(file.name);
+      if (!looksLikePdf && !(aiAvailable && looksLikeImage)) {
+        showToast(
+          aiAvailable
+            ? 'Use a PDF or a JPEG/PNG/WebP photo of the packing slip.'
+            : 'Only PDF packing slips can be imported right now — photos and scanned images aren’t supported.'
+        );
+        return;
+      }
+
+      const token = ++importToken;
+      showReadingStatus(file, !looksLikePdf);
       summaryEl.innerHTML = '';
 
       currentSourceFile = file;
       currentSourceFileDataUrl = null;
+      currentSourceFilePath = null;
       if (file.size <= MAX_STORED_SOURCE_FILE_BYTES) {
         readFileAsDataUrl(file)
           .then((dataUrl) => {
@@ -560,11 +647,31 @@ function renderPalletLabelsScreen(root) {
           .catch(() => {});
       }
 
-      importPackingSlipPdf(file)
-        .then(({ lines, grandTotal }) => {
+      // A digital PDF is parsed locally first (free, instant, exact). Only a
+      // PDF with no recognisable rows (typically a scan) or a photo goes to AI.
+      const importPromise = looksLikePdf
+        ? importPackingSlipPdf(file).then((result) =>
+            result.lines.length || !aiAvailable ? { ...result, viaAi: false, warnings: [] } : importWithAi(file, token)
+          )
+        : importWithAi(file, token);
+
+      importPromise
+        .then(({ lines, grandTotal, viaAi, warnings }) => {
+          if (token !== importToken) return;
           statusEl.innerHTML = '';
+          const warningsHtml = warnings.length
+            ? `<ul class="pallet-ai-warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+            : '';
           if (!lines.length) {
-            summaryEl.innerHTML = `
+            summaryEl.innerHTML = viaAi
+              ? `
+              <p class="pallet-totals-mismatch">
+                The AI couldn&rsquo;t find any packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
+                Try a sharper, well-lit photo of the whole sheet, or enter the lines by hand below.
+              </p>
+              ${warningsHtml}
+            `
+              : `
               <p class="pallet-totals-mismatch">
                 Couldn&rsquo;t find any recognisable packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
                 It may be a scanned image rather than a digital PDF with real text &mdash; try exporting it directly
@@ -587,7 +694,7 @@ function renderPalletLabelsScreen(root) {
 
           summaryEl.innerHTML = `
             <p class="${flaggedLines.length || !totalMatches ? 'pallet-totals-mismatch' : 'pallet-totals-ok'}">
-              Imported ${lines.length} line${lines.length === 1 ? '' : 's'} from &ldquo;${escapeHtml(file.name)}&rdquo;
+              ${viaAi ? '<strong>Read by AI.</strong> ' : ''}Imported ${lines.length} line${lines.length === 1 ? '' : 's'} from &ldquo;${escapeHtml(file.name)}&rdquo;
               (${computedTotal.toLocaleString()} units${grandTotal !== null ? ` vs. the slip's stated grand total of ${grandTotal.toLocaleString()}` : ''}).
               ${totalMatches ? '' : ' These do not match — check the lines below.'}
               ${flaggedLines.length
@@ -595,9 +702,11 @@ function renderPalletLabelsScreen(root) {
                 : ' Every line’s batch rows matched the slip’s own subtotal for that product.'}
               Review every row against the packing slip before generating.
             </p>
+            ${warningsHtml}
           `;
         })
         .catch((err) => {
+          if (token !== importToken) return;
           statusEl.innerHTML = '';
           summaryEl.innerHTML = `
             <p class="pallet-totals-mismatch">
@@ -717,6 +826,7 @@ function renderPalletLabelsScreen(root) {
       batchRecord = await PalletLabelsBackend.addPalletLabelBatch({
         filename: currentSourceFile ? currentSourceFile.name : '',
         sourceFileDataUrl: currentSourceFileDataUrl,
+        existingSourceFilePath: currentSourceFilePath,
         pallets,
         grandTotal,
       });

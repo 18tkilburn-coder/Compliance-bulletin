@@ -68,13 +68,54 @@ considered done — per the approved acceptance criteria, this test suite
 passing in full is a precondition for signing off Phase 1, not an optional
 extra.
 
-## What this does *not* yet cover
+## Phase 4: AI packing-slip extraction
 
-The future AI Edge Function (Phase 4) needs its own, separate equivalent
-test once it exists, because it will hold service-role-level database
-access to write extraction results — Row Level Security does not apply to
-that key at all, so isolation there depends entirely on the function's own
-code correctly deriving the caller's business from their verified Auth
-token and never trusting a client-supplied value. This is noted as a
-tracked requirement for Phase 4, not something this Phase 1 test suite can
-verify, since that function doesn't exist yet.
+`functions/extract-packing-slip/index.ts` is a Supabase Edge Function that
+reads an uploaded packing slip (phone photo or scanned PDF) with Claude and
+returns its rows to the Pallet Labels screen for review. It does what Claude
+used to do by hand from photos (see the handover, section 1). Digital PDFs
+are still parsed locally in the browser first, for free; only a photo, or a
+PDF with no readable text, goes to the function.
+
+**Isolation design.** The function never holds the service-role key. It
+runs *as the caller*, with their own Auth token, so the same Row Level
+Security policies that protect the browser also protect it: `businesses`
+returns only the caller's own row, and Storage refuses another business's
+path. It also rejects any path whose first segment isn't the caller's own
+business id, and never reads a business id from the request body. It writes
+nothing; saving the batch stays in the browser, under RLS, as before.
+
+**What it costs.** Each read is one Claude Opus 5.5 request (`effort:
+high`). A typical one-page sheet is a few thousand tokens in and out:
+a few pence per sheet at current API prices.
+
+### Setup (needs the Supabase CLI and an Anthropic API key)
+
+1. Install the Supabase CLI and link this repo to your project:
+   `supabase login`, then `supabase link --project-ref <your-project-ref>`.
+2. Store the Anthropic key as a function secret. It never goes in any
+   browser file:
+   `supabase secrets set ANTHROPIC_API_KEY=sk-ant-...`
+3. Deploy: `supabase functions deploy extract-packing-slip`.
+   `SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to the function
+   automatically.
+4. Fill in `js/supabaseConfig.js` (and `pb/js/supabaseConfig.js`) if not
+   already done. Once a business is signed in, the Pallet Labels upload box
+   accepts photos as well as PDFs.
+
+### Phase 4 acceptance test
+
+`tests/extract_function_isolation.test.js` checks that Business A can't
+get Business B's uploaded file read (exact path, path traversal, a forged
+`business_id` in the body), and that an unsigned-in client is refused.
+Every request in it is rejected before Claude is called, so it costs
+nothing to run. Same environment variables as the Phase 1 test:
+
+```bash
+cd supabase/tests
+node extract_function_isolation.test.js
+```
+
+Expect every line to print `PASS`. Then check a real extraction by hand:
+upload `inputs/trailer10_sheet_photo_page2.jpg` from the handover package
+and compare the review table against the photo.

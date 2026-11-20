@@ -122,6 +122,10 @@ const PalletLabelsBackend = (() => {
   // policies expect: {business_id}/{random}/{filename}.
   async function uploadSourceFile(businessId, filename, dataUrl) {
     const blob = await (await fetch(dataUrl)).blob();
+    return uploadSourceBlob(businessId, filename, blob);
+  }
+
+  async function uploadSourceBlob(businessId, filename, blob) {
     const randomSegment =
       (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
       `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -153,13 +157,16 @@ const PalletLabelsBackend = (() => {
     };
   }
 
-  async function addPalletLabelBatch({ filename, sourceFileDataUrl, pallets, grandTotal }) {
+  // `existingSourceFilePath` is set when the file is already in Storage
+  // (the Phase 4 AI import uploads it before extraction), so it isn't
+  // uploaded a second time.
+  async function addPalletLabelBatch({ filename, sourceFileDataUrl, existingSourceFilePath, pallets, grandTotal }) {
     if (!(await useSupabase())) {
       return Store.addPalletLabelBatch({ filename, sourceFileDataUrl, pallets, grandTotal });
     }
     const businessId = await currentBusinessId();
-    let sourceFilePath = null;
-    if (sourceFileDataUrl) {
+    let sourceFilePath = existingSourceFilePath || null;
+    if (!sourceFilePath && sourceFileDataUrl) {
       sourceFilePath = await uploadSourceFile(businessId, filename, sourceFileDataUrl);
     }
     const name = defaultPalletBatchName(filename);
@@ -228,7 +235,51 @@ const PalletLabelsBackend = (() => {
     if (error) throw error;
   }
 
+  // ---- Phase 4: AI packing-slip extraction ----
+
+  // AI extraction needs the Edge Function, which needs a signed-in
+  // business. With no Supabase configured this is false, and the screen
+  // keeps its original PDF-only behaviour.
+  async function aiExtractionAvailable() {
+    return useSupabase();
+  }
+
+  // Uploads the file into this business's own Storage folder (the same
+  // RLS-checked path convention as batch history), then asks the
+  // extract-packing-slip Edge Function to read it. supabase-js sends the
+  // signed-in session's token with the call, and the function derives the
+  // business from that token alone. Resolves to { extraction, sourceFilePath };
+  // the path is handed back to addPalletLabelBatch so the file isn't
+  // uploaded twice.
+  async function extractPackingSlipWithAi(file) {
+    const businessId = await currentBusinessId();
+    if (!businessId) throw new Error('Sign in to the shared backend to use AI reading.');
+    // The Edge Function picks PDF vs. image handling from the extension, so
+    // make sure there is one (e.g. a pasted image with no real filename).
+    const extFromType = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[file.type];
+    let name = file.name || 'packing-slip';
+    if (extFromType && !/\.(pdf|jpe?g|png|webp)$/i.test(name)) name = `${name}.${extFromType}`;
+    const sourceFilePath = await uploadSourceBlob(businessId, name, file);
+    const { data, error } = await client().functions.invoke('extract-packing-slip', {
+      body: { path: sourceFilePath },
+    });
+    if (error) {
+      let message = error.message || 'AI reading failed';
+      try {
+        const body = error.context && (await error.context.json());
+        if (body && body.error) message = body.error;
+      } catch (_) {
+        // Not a JSON error body (e.g. network failure): keep the generic message.
+      }
+      throw new Error(message);
+    }
+    if (!data || !data.extraction) throw new Error('The AI service returned no result.');
+    return { extraction: data.extraction, sourceFilePath };
+  }
+
   return {
+    aiExtractionAvailable,
+    extractPackingSlipWithAi,
     getPalletLimits,
     setPalletLimit,
     deletePalletLimit,

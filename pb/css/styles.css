@@ -2525,6 +2525,17 @@ input:focus, select:focus {
   margin: 12px 0 0;
 }
 
+/* Phase 4: notes the AI left about illegible cells or hand-written corrections. */
+.pallet-ai-warnings {
+  background: var(--color-orange-light);
+  border: 1px solid var(--color-orange);
+  color: var(--color-orange-text);
+  border-radius: 8px;
+  padding: 8px 14px 8px 32px;
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+}
+
 .pallet-totals-ok {
   background: var(--color-grey-light);
   border: 1px solid var(--color-dark-grey);
