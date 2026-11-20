@@ -1,0 +1,13 @@
+{
+  "name": "pallet-labels-v2-security-tests",
+  "private": true,
+  "description": "Standalone test harness for the Phase 1 Supabase schema's cross-tenant RLS isolation. Deliberately separate from the main app's package.json-free, no-build-step structure — these scripts run with Node directly against a real Supabase project and are never shipped to the browser.",
+  "type": "commonjs",
+  "scripts": {
+    "seed": "node seed_test_businesses.js",
+    "test": "node cross_tenant_isolation.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}

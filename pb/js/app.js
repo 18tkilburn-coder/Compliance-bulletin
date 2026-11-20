@@ -184,14 +184,73 @@ const AppRouter = (() => {
   });
   sidebarBackdrop.addEventListener('click', closeSidebarDrawer);
 
+  // ----- Pallet Labels V2, Phase 1: business sign-in gate -----
+  // A SEPARATE, new layer in front of everything above: Portal (Employee/
+  // Manager) decides which tabs you see once you're in; this decides WHICH
+  // BUSINESS's data you're allowed to touch at all (see
+  // PALLET_LABELS_V2_C2_REVISED.md). Entirely inert — bootstrap() falls
+  // straight through to the exact behaviour above — when
+  // window.SUPABASE_CONFIG isn't filled in (js/supabaseConfig.js).
+  const businessGate = document.getElementById('business-gate');
+
+  function showBusinessGate() {
+    gate.hidden = true;
+    appShell.hidden = true;
+    if (businessGate) businessGate.hidden = false;
+  }
+
+  function enterAfterBusinessSignIn() {
+    if (businessGate) businessGate.hidden = true;
+    if (Portal.get()) {
+      enterApp();
+    } else {
+      showGate();
+    }
+  }
+
+  if (businessGate) {
+    const emailInput = document.getElementById('business-email');
+    const passwordInput = document.getElementById('business-password');
+    const errorEl = document.getElementById('business-signin-error');
+    const signInBtn = document.getElementById('business-signin-btn');
+
+    if (signInBtn) {
+      signInBtn.addEventListener('click', async () => {
+        if (errorEl) errorEl.hidden = true;
+        signInBtn.disabled = true;
+        const { error } = await BusinessAuth.signIn(emailInput.value, passwordInput.value);
+        signInBtn.disabled = false;
+        if (error) {
+          if (errorEl) {
+            errorEl.textContent = error;
+            errorEl.hidden = false;
+          }
+          return;
+        }
+        enterAfterBusinessSignIn();
+      });
+    }
+  }
+
+  async function bootstrap() {
+    if (businessGate && window.BusinessAuth && BusinessAuth.isRequired()) {
+      const signedIn = await BusinessAuth.isSignedIn();
+      if (!signedIn) {
+        showBusinessGate();
+        return;
+      }
+    }
+    if (Portal.get()) {
+      enterApp();
+    } else {
+      showGate();
+    }
+  }
+
   setInterval(updateClock, 30000);
   updateClock();
 
-  if (Portal.get()) {
-    enterApp();
-  } else {
-    showGate();
-  }
+  bootstrap();
 
   return {
     refresh: () => showScreen(activeScreen),

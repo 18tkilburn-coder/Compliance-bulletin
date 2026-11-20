@@ -9,6 +9,15 @@
 // driven by a packing slip and produces pallet-level logistics labels,
 // not per-unit stock entries, so it doesn't touch the pending-delivery
 // or stock-entry data at all.
+//
+// Pallet V2 note: this screen's pallet-limits and pallet-label-batch-history
+// reads/writes go through PalletLabelsBackend (js/palletLabelsBackend.js),
+// not Store, directly. That module transparently falls back to the
+// original Store/localStorage behaviour when Supabase isn't configured, so
+// every function below is written async/await purely to support that
+// future path — with no Supabase project configured, every await below
+// resolves on the same tick as before and nothing about this screen's
+// behaviour changes.
 
 // Pallet labels drop the "Per4m" brand prefix and the word "Protein" from
 // the packing slip's product text — e.g. "Per4m Advanced Protein 495g"
@@ -272,8 +281,12 @@ async function importPackingSlipPdf(file) {
 }
 
 // Packing-slip files over this size aren't kept as a copy in the history
-// log (only their filename is) — localStorage has a small, fixed quota
-// shared by the whole app, and every past batch's copy sits in it.
+// log (only their filename is) when falling back to localStorage — that
+// store has a small, fixed quota shared by the whole app, and every past
+// batch's copy sits in it. The Supabase path (via PalletLabelsBackend) has
+// no such cap, since it stores the file in Supabase Storage rather than as
+// a base64 string inside the record itself — this constant only governs
+// the legacy, no-Supabase-configured fallback behaviour.
 const MAX_STORED_SOURCE_FILE_BYTES = 4 * 1024 * 1024;
 
 function readFileAsDataUrl(file) {
@@ -285,15 +298,16 @@ function readFileAsDataUrl(file) {
   });
 }
 
-// Offers a stored file (as a data URL) back to the user for download. A
-// plain `<a download>` click doesn't work inside the sandboxed iframe the
-// published Artifact runs in, so when a `downloads` capability is present
-// (the Artifact context) this goes through it instead; the real file-tree
+// Offers a stored file back to the user for download. A plain `<a
+// download>` click doesn't work inside the sandboxed iframe the published
+// Artifact runs in, so when a `downloads` capability is present (the
+// Artifact context) this goes through it instead; the real file-tree
 // deployment has no such sandbox, so it falls straight through to the
-// ordinary anchor-click trick there.
-async function triggerFileDownload(dataUrl, filename) {
-  const blob = await (await fetch(dataUrl)).blob();
-
+// ordinary anchor-click trick there. Accepts a Blob directly (rather than
+// always re-fetching a data URL) so the Supabase Storage download path
+// (which already has the bytes in hand) doesn't need a round-trip through
+// a data: URL just to get back to a Blob.
+async function triggerBlobDownload(blob, filename) {
   if (window.claude && typeof window.claude.use === 'function') {
     try {
       const downloads = await window.claude.use('downloads');
@@ -319,11 +333,36 @@ async function triggerFileDownload(dataUrl, filename) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
+// Legacy path: the batch's source file is a base64 data URL stored
+// directly in the record (today's localStorage-only behaviour).
+async function triggerFileDownload(dataUrl, filename) {
+  const blob = await (await fetch(dataUrl)).blob();
+  return triggerBlobDownload(blob, filename);
+}
+
 function formatPalletBatchDate(timestamp) {
   const d = new Date(timestamp);
   const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
   const timePart = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   return `${datePart}, ${timePart}`;
+}
+
+// A batch's original source file may have been kept one of two ways
+// depending on which backend produced it: a base64 data URL embedded
+// directly in the record (the localStorage-only fallback, capped at
+// MAX_STORED_SOURCE_FILE_BYTES), or a path into Supabase Storage (the
+// Supabase-configured path, which has no such size cap). Exactly one of
+// these two fields is ever set on a given batch, never both.
+function batchHasSourceFile(batch) {
+  return !!(batch.sourceFileDataUrl || batch.sourceFilePath);
+}
+
+// Human-readable summary of whether/how a batch's original file was kept,
+// for the history list and batch detail helper text.
+function sourceFileStatusText(batch) {
+  if (batch.sourceFileDataUrl || batch.sourceFilePath) return 'original PDF saved';
+  if (batch.filename) return 'original PDF not kept (too large)';
+  return 'entered manually';
 }
 
 // Set by openPalletLabelBatch() so a deep link (the Dashboard's Last
@@ -381,8 +420,8 @@ function renderPalletLabelsScreen(root) {
     });
   }
 
-  function limitsReferenceHtml() {
-    const limits = Store.getPalletLimits();
+  async function limitsReferenceHtml() {
+    const limits = await PalletLabelsBackend.getPalletLimits();
     const rows = Object.keys(limits)
       .sort()
       .map((size) => `<div class="pallet-limit-row"><span>${escapeHtml(size)}</span><span>${limits[size].toLocaleString()}</span></div>`)
@@ -395,9 +434,11 @@ function renderPalletLabelsScreen(root) {
     `;
   }
 
-  function renderInputStep() {
+  async function renderInputStep() {
     currentSourceFile = null;
     currentSourceFileDataUrl = null;
+
+    const limitsHtml = await limitsReferenceHtml();
 
     root.innerHTML = `
       ${subNavHtml('new')}
@@ -417,7 +458,7 @@ function renderPalletLabelsScreen(root) {
         <input type="file" id="pallet-file-input" accept=".pdf,application/pdf" hidden />
         <div id="pallet-import-status"></div>
         <div id="pallet-import-summary"></div>
-        ${limitsReferenceHtml()}
+        ${limitsHtml}
         <div class="table-scroll">
           <table class="line-items-table pallet-input-table" id="pallet-lines-table">
             <thead>
@@ -620,7 +661,7 @@ function renderPalletLabelsScreen(root) {
     return { lines };
   }
 
-  function attemptGenerate() {
+  async function attemptGenerate() {
     const feedbackEl = document.getElementById('pallet-generate-feedback');
     const missingWrap = document.getElementById('pallet-missing-size-wrap');
     const previewWrap = document.getElementById('pallet-preview-wrap');
@@ -641,7 +682,7 @@ function renderPalletLabelsScreen(root) {
     }
     const grandTotal = Number(grandTotalRaw);
 
-    const limits = Store.getPalletLimits();
+    const limits = await PalletLabelsBackend.getPalletLimits();
     const missingSizes = [...new Set(lines.filter((l) => limits[l.sizeKey] === undefined).map((l) => l.sizeKey))];
 
     if (missingSizes.length) {
@@ -670,12 +711,23 @@ function renderPalletLabelsScreen(root) {
 
     const palletSumCheck = pallets.reduce((sum, p) => sum + p.quantity, 0);
 
-    const batchRecord = Store.addPalletLabelBatch({
-      filename: currentSourceFile ? currentSourceFile.name : '',
-      sourceFileDataUrl: currentSourceFileDataUrl,
-      pallets,
-      grandTotal,
-    });
+    let batchRecord;
+    try {
+      batchRecord = await PalletLabelsBackend.addPalletLabelBatch({
+        filename: currentSourceFile ? currentSourceFile.name : '',
+        sourceFileDataUrl: currentSourceFileDataUrl,
+        pallets,
+        grandTotal,
+      });
+    } catch (err) {
+      feedbackEl.innerHTML = `
+        <p class="pallet-totals-mismatch">
+          Totals checked out, but saving this batch failed: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
+          Nothing was saved to history — try again.
+        </p>
+      `;
+      return;
+    }
 
     feedbackEl.innerHTML = `
       <p class="pallet-totals-ok">
@@ -714,7 +766,7 @@ function renderPalletLabelsScreen(root) {
       </div>
     `;
 
-    document.getElementById('pallet-save-limits-btn').addEventListener('click', () => {
+    document.getElementById('pallet-save-limits-btn').addEventListener('click', async () => {
       const inputs = Array.from(document.querySelectorAll('.pallet-missing-size-input'));
       for (const input of inputs) {
         const value = input.value;
@@ -724,7 +776,9 @@ function renderPalletLabelsScreen(root) {
           return;
         }
       }
-      inputs.forEach((input) => Store.setPalletLimit(input.dataset.size, input.value));
+      for (const input of inputs) {
+        await PalletLabelsBackend.setPalletLimit(input.dataset.size, input.value);
+      }
       showToast('Pallet limit saved');
       missingWrap.innerHTML = '';
       onSaved();
@@ -760,8 +814,8 @@ function renderPalletLabelsScreen(root) {
 
   // ----- Past Pallet Labels (history log) -----
 
-  function renderHistoryList() {
-    const batches = Store.getPalletLabelBatches();
+  async function renderHistoryList() {
+    const batches = await PalletLabelsBackend.getPalletLabelBatches();
 
     root.innerHTML = `
       ${subNavHtml('history')}
@@ -777,9 +831,8 @@ function renderPalletLabelsScreen(root) {
                     <div class="delivery-history-filename">${escapeHtml(b.name)}</div>
                     <div class="delivery-history-meta">
                       Generated ${escapeHtml(formatPalletBatchDate(b.generatedAt))} &middot;
-                      ${b.grandTotal.toLocaleString()} unit${b.grandTotal === 1 ? '' : 's'}${
-                    b.sourceFileDataUrl ? ' &middot; original PDF saved' : b.filename ? ' &middot; original PDF not kept (too large)' : ' &middot; entered manually'
-                  }
+                      ${b.grandTotal.toLocaleString()} unit${b.grandTotal === 1 ? '' : 's'} &middot;
+                      ${escapeHtml(sourceFileStatusText(b))}
                     </div>
                   </div>
                   <div class="delivery-history-row-right">
@@ -822,10 +875,10 @@ function renderPalletLabelsScreen(root) {
     });
   }
 
-  function confirmDeleteBatchRow(id) {
+  async function confirmDeleteBatchRow(id) {
     const rowEl = document.querySelector(`.delivery-history-row[data-batch-id="${id}"]`);
     if (!rowEl) return;
-    const batch = Store.getPalletLabelBatchById(id);
+    const batch = await PalletLabelsBackend.getPalletLabelBatchById(id);
 
     rowEl.removeAttribute('role');
     rowEl.removeAttribute('tabindex');
@@ -844,16 +897,16 @@ function renderPalletLabelsScreen(root) {
       e.stopPropagation();
       renderHistoryList();
     });
-    document.getElementById('confirm-delete-pallet-batch').addEventListener('click', (e) => {
+    document.getElementById('confirm-delete-pallet-batch').addEventListener('click', async (e) => {
       e.stopPropagation();
-      Store.deletePalletLabelBatch(id);
+      await PalletLabelsBackend.deletePalletLabelBatch(id);
       showToast('Pallet label batch deleted');
       renderHistoryList();
     });
   }
 
-  function renderBatchDetail(batchId) {
-    const batch = Store.getPalletLabelBatchById(batchId);
+  async function renderBatchDetail(batchId) {
+    const batch = await PalletLabelsBackend.getPalletLabelBatchById(batchId);
     if (!batch) {
       renderHistoryList();
       return;
@@ -880,7 +933,7 @@ function renderPalletLabelsScreen(root) {
           ${batch.grandTotal.toLocaleString()} unit${batch.grandTotal === 1 ? '' : 's'} total.
         </p>
         ${
-          batch.sourceFileDataUrl
+          batchHasSourceFile(batch)
             ? `<button type="button" class="btn btn-sm mt-sm" id="pallet-download-source-btn">Download original packing slip PDF</button>`
             : ''
         }
@@ -905,15 +958,24 @@ function renderPalletLabelsScreen(root) {
 
     const downloadBtn = document.getElementById('pallet-download-source-btn');
     if (downloadBtn) {
-      downloadBtn.addEventListener('click', () => {
+      downloadBtn.addEventListener('click', async () => {
         downloadBtn.disabled = true;
-        triggerFileDownload(batch.sourceFileDataUrl, batch.filename || 'packing-slip.pdf')
-          .catch((err) => {
-            showToast(`Couldn't download the file: ${err && err.message ? err.message : 'unknown error'}`);
-          })
-          .finally(() => {
-            downloadBtn.disabled = false;
-          });
+        try {
+          if (batch.sourceFilePath) {
+            // Supabase Storage path: fetch the bytes through the backend
+            // module (which applies the same business-scoped RLS-backed
+            // client the rest of this screen uses) rather than assuming
+            // any particular public URL shape.
+            const blob = await PalletLabelsBackend.downloadSourceFile(batch.sourceFilePath);
+            await triggerBlobDownload(blob, batch.filename || 'packing-slip.pdf');
+          } else {
+            await triggerFileDownload(batch.sourceFileDataUrl, batch.filename || 'packing-slip.pdf');
+          }
+        } catch (err) {
+          showToast(`Couldn't download the file: ${err && err.message ? err.message : 'unknown error'}`);
+        } finally {
+          downloadBtn.disabled = false;
+        }
       });
     }
 
@@ -928,19 +990,21 @@ function renderPalletLabelsScreen(root) {
       input.focus();
       input.select();
 
-      function saveRename() {
+      async function saveRename() {
         const newName = input.value.trim();
         if (!newName) {
           showToast('Name is required');
           return;
         }
-        Store.renamePalletLabelBatch(batchId, newName);
+        await PalletLabelsBackend.renamePalletLabelBatch(batchId, newName);
         showToast('Renamed');
         renderBatchDetail(batchId);
       }
 
       document.getElementById('save-pallet-batch-name-btn').addEventListener('click', saveRename);
-      document.getElementById('cancel-pallet-batch-name-btn').addEventListener('click', () => renderBatchDetail(batchId));
+      document.getElementById('cancel-pallet-batch-name-btn').addEventListener('click', () => {
+        renderBatchDetail(batchId);
+      });
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -968,8 +1032,8 @@ function renderPalletLabelsScreen(root) {
       document.getElementById('cancel-delete-pallet-batch-detail').addEventListener('click', () => {
         renderBatchDetail(batchId);
       });
-      document.getElementById('confirm-delete-pallet-batch-detail').addEventListener('click', () => {
-        Store.deletePalletLabelBatch(batchId);
+      document.getElementById('confirm-delete-pallet-batch-detail').addEventListener('click', async () => {
+        await PalletLabelsBackend.deletePalletLabelBatch(batchId);
         showToast('Pallet label batch deleted');
         renderHistoryList();
       });
@@ -1011,10 +1075,11 @@ function renderPalletLabelsScreen(root) {
     renderPalletLimitsTable();
   }
 
-  function renderPalletLimitsTable() {
-    const limits = Store.getPalletLimits();
+  async function renderPalletLimitsTable() {
+    const limits = await PalletLabelsBackend.getPalletLimits();
     const sizes = Object.keys(limits).sort();
     const body = document.getElementById('pallet-limits-body');
+    if (!body) return; // the screen may have navigated away before this resolved
 
     body.innerHTML = sizes.length
       ? sizes
@@ -1035,27 +1100,27 @@ function renderPalletLabelsScreen(root) {
       : '<tr><td colspan="3"><div class="empty-state">No pallet sizes recorded yet.</div></td></tr>';
 
     body.querySelectorAll('.pallet-limit-edit-input').forEach((input) => {
-      input.addEventListener('change', () => {
+      input.addEventListener('change', async () => {
         const value = Number(input.value);
         if (!value || value <= 0) {
           showToast('Enter a max quantity greater than zero');
           renderPalletLimitsTable();
           return;
         }
-        Store.setPalletLimit(input.dataset.size, value);
+        await PalletLabelsBackend.setPalletLimit(input.dataset.size, value);
         showToast(`Pallet limit for "${input.dataset.size}" updated`);
       });
     });
 
     body.querySelectorAll('.pallet-limit-delete-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        Store.deletePalletLimit(btn.dataset.size);
+      btn.addEventListener('click', async () => {
+        await PalletLabelsBackend.deletePalletLimit(btn.dataset.size);
         showToast(`Removed pallet limit for "${btn.dataset.size}"`);
         renderPalletLimitsTable();
       });
     });
 
-    document.getElementById('add-pallet-limit-btn').addEventListener('click', () => {
+    document.getElementById('add-pallet-limit-btn').addEventListener('click', async () => {
       const sizeInput = document.getElementById('new-pallet-size-input');
       const limitInput = document.getElementById('new-pallet-limit-input');
       const size = sizeInput.value.trim().toLowerCase().replace(/\s+/g, '');
@@ -1072,7 +1137,7 @@ function renderPalletLabelsScreen(root) {
         return;
       }
 
-      Store.setPalletLimit(size, limit);
+      await PalletLabelsBackend.setPalletLimit(size, limit);
       showToast(`Pallet limit for "${size}" saved`);
       sizeInput.value = '';
       limitInput.value = '';
