@@ -2582,6 +2582,16 @@ input:focus, select:focus {
 .pallet-label-flavour {
   font-weight: 800;
   line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.pallet-line-bbe-readonly {
+  display: inline-block;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  background: var(--color-grey-light);
+  border-radius: 6px;
 }
 
 .pallet-label-divider {
@@ -2597,6 +2607,7 @@ input:focus, select:focus {
 }
 
 .pallet-label-info {
+  text-transform: uppercase;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.5;

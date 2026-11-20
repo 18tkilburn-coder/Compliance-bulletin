@@ -46,9 +46,9 @@ function labelHtml(pallet, index) {
       <div class="pallet-label-divider"></div>
       <div class="pallet-label-bottom">
         <div class="pallet-label-info">
-          <div>QTY ${escapeHtml(String(pallet.quantity))}</div>
-          ${pallet.bbe ? `<div>BBE ${escapeHtml(pallet.bbe)}</div>` : ''}
-          ${pallet.batchCodes && pallet.batchCodes.length ? `<div>BATCH ${escapeHtml(pallet.batchCodes.join(', '))}</div>` : ''}
+          <div>QTY : ${escapeHtml(String(pallet.quantity))}</div>
+          ${pallet.bbe ? `<div>BBE : ${escapeHtml(pallet.bbe)}</div>` : ''}
+          ${pallet.batchCodes && pallet.batchCodes.length ? `<div>BATCH : ${escapeHtml(LabelEngine.dedupeBatchCodes(pallet.batchCodes).join(', '))}</div>` : ''}
         </div>
         <div class="pallet-label-qr">${qr.createSvgTag(4)}</div>
       </div>
@@ -173,7 +173,12 @@ function parsePackingSlipLines(textLines) {
     const key = productFullText.trim().toLowerCase();
     if (byKey.has(key)) return byKey.get(key);
     const { productText, flavour } = splitProductAndFlavour(productFullText);
-    const group = { productText, flavour, batchCodes: [], quantity: 0, bbeMonth: '', bbeYear: '', statedTotal: null };
+    // bbeDates collects every row's date (not just the first) — a single
+    // product can have several batches with different best-before months,
+    // which the reference automation shows as "08/29 / 10/29 / 11/29" on
+    // one label (Per4m_Pallet_Label_Handover.md section 2.5/3.3). Deduped
+    // and text-sorted into the final display string in importPackingSlipPdf.
+    const group = { productText, flavour, batchCodes: [], quantity: 0, bbeDates: [], statedTotal: null };
     byKey.set(key, group);
     groups.push(group);
     return group;
@@ -182,10 +187,7 @@ function parsePackingSlipLines(textLines) {
   function addRow(group, batch, month, yearFull, qty) {
     group.batchCodes.push(batch);
     group.quantity += Number(qty);
-    if (!group.bbeMonth) {
-      group.bbeMonth = month.padStart(2, '0');
-      group.bbeYear = yearFull.slice(-2);
-    }
+    group.bbeDates.push(formatBestBefore(month.padStart(2, '0'), yearFull.slice(-2)));
   }
 
   textLines.forEach((line) => {
@@ -233,9 +235,20 @@ async function importPackingSlipPdf(file) {
       sizeKey: LabelEngine.parseSizeKey(g.productText),
       flavour: g.flavour,
       quantity: g.quantity,
-      bbeMonth: g.bbeMonth,
-      bbeYear: g.bbeYear,
-      bbe: g.bbeMonth && g.bbeYear ? formatBestBefore(g.bbeMonth, g.bbeYear) : '',
+      // Deduped, text-sorted, "/"-joined — matches the reference script's
+      // `sorted(set(short_date(b[1]) for b in batches))` exactly, including
+      // its documented quirk of sorting "MM/YY" as plain text (so a date
+      // in one year can sort before an earlier date in a different year;
+      // reproduced deliberately, not fixed, per the handover's own note
+      // that no real delivery has shown it going wrong in practice).
+      bbe: [...new Set(g.bbeDates)].sort().join(' / '),
+      // bbeMonth/bbeYear (the single earliest date) are kept only to
+      // prefill the review table's month/year selects for the common
+      // single-date case — see addRow()/readLines() below for how a
+      // genuinely multi-date line is preserved through editing instead of
+      // being silently collapsed to one date by those selects.
+      bbeMonth: [...new Set(g.bbeDates)].sort()[0]?.split('/')[0] || '',
+      bbeYear: [...new Set(g.bbeDates)].sort()[0]?.split('/')[1] || '',
       batchCodes: g.batchCodes,
       flagged,
       flagReason: flagged
@@ -470,11 +483,20 @@ function renderPalletLabelsScreen(root) {
       }
       const p = prefill || {};
       const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
-      tr.innerHTML = `
-        <td><input type="text" class="pallet-line-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.productText || '')}" /></td>
-        <td><input type="text" class="pallet-line-flavour" placeholder="e.g. Chocolate" value="${escapeHtml(p.flavour || '')}" /></td>
-        <td><input type="number" class="pallet-line-qty" min="1" placeholder="500" value="${p.quantity || ''}" /></td>
-        <td>
+      // A product can have more than one distinct best-before date across
+      // its batch rows (e.g. "08/29 / 10/29 / 11/29") — the reference
+      // automation shows all of them on one label. Two month/year selects
+      // can only ever hold one date, so a genuinely multi-date import is
+      // shown read-only (with its full value preserved in a hidden field
+      // for readLines() below) instead of being silently collapsed to
+      // just the first date the moment the selects render.
+      const isMultiDate = !!(p.bbe && p.bbe.includes(' / '));
+      const bbeCellHtml = isMultiDate
+        ? `
+          <input type="hidden" class="pallet-line-bbe-full" value="${escapeHtml(p.bbe)}" />
+          <span class="pallet-line-bbe-readonly" title="Multiple best-before dates from the packing slip — edit the Product/Flavour/Batch fields if needed, but this date list is kept as imported.">${escapeHtml(p.bbe)}</span>
+        `
+        : `
           <div class="line-item-bbd">
             <select class="pallet-line-bbe-month">
               <option value="">MM</option>
@@ -489,7 +511,12 @@ function renderPalletLabelsScreen(root) {
                 .join('')}
             </select>
           </div>
-        </td>
+        `;
+      tr.innerHTML = `
+        <td><input type="text" class="pallet-line-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.productText || '')}" /></td>
+        <td><input type="text" class="pallet-line-flavour" placeholder="e.g. Chocolate" value="${escapeHtml(p.flavour || '')}" /></td>
+        <td><input type="number" class="pallet-line-qty" min="1" placeholder="500" value="${p.quantity || ''}" /></td>
+        <td>${bbeCellHtml}</td>
         <td><input type="text" class="pallet-line-batch" placeholder="e.g. 123-456" value="${escapeHtml(batchValue)}" /></td>
         <td><button type="button" class="btn btn-sm btn-danger pallet-line-remove">Remove</button></td>
       `;
@@ -607,11 +634,24 @@ function renderPalletLabelsScreen(root) {
       const productText = row.querySelector('.pallet-line-product').value.trim();
       const flavour = row.querySelector('.pallet-line-flavour').value.trim();
       const qtyRaw = row.querySelector('.pallet-line-qty').value;
-      const month = row.querySelector('.pallet-line-bbe-month').value;
-      const year = row.querySelector('.pallet-line-bbe-year').value;
       const batchRaw = row.querySelector('.pallet-line-batch').value.trim();
 
-      if (!productText || !flavour || !qtyRaw || !month || !year || !batchRaw) {
+      // A multi-date row (see addRow()) has no month/year selects at all —
+      // its full, already-deduped/sorted date string is read straight from
+      // the hidden field instead.
+      const fullBbeInput = row.querySelector('.pallet-line-bbe-full');
+      let bbe, hasBbe;
+      if (fullBbeInput) {
+        bbe = fullBbeInput.value;
+        hasBbe = !!bbe;
+      } else {
+        const month = row.querySelector('.pallet-line-bbe-month').value;
+        const year = row.querySelector('.pallet-line-bbe-year').value;
+        hasBbe = !!(month && year);
+        bbe = hasBbe ? formatBestBefore(month, year) : '';
+      }
+
+      if (!productText || !flavour || !qtyRaw || !hasBbe || !batchRaw) {
         return { error: 'Every row needs a product + size, flavour, quantity, best-before, and at least one batch code' };
       }
 
@@ -621,7 +661,7 @@ function renderPalletLabelsScreen(root) {
         sizeKey: LabelEngine.parseSizeKey(productText),
         flavour,
         quantity: Number(qtyRaw),
-        bbe: formatBestBefore(month, year),
+        bbe,
         batchCodes: batchRaw.split(',').map((b) => b.trim()).filter(Boolean),
       });
     }
@@ -788,7 +828,8 @@ function renderPalletLabelsScreen(root) {
       const originalText = btn.textContent;
       btn.textContent = 'Generating…';
       try {
-        const blob = await LabelEngine.generatePalletLabelsPdf(pallets);
+        const limits = await PalletLabelsBackend.getPalletLimits();
+        const blob = await LabelEngine.generatePalletLabelsPdf(pallets, limits);
         await triggerBlobDownload(blob, `${filenameBase}.pdf`);
       } catch (err) {
         showToast(`Couldn't generate the PDF: ${err && err.message ? err.message : 'unknown error'}`);
