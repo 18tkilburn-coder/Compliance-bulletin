@@ -30,8 +30,16 @@ import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 const BUCKET = 'pallet-label-sources';
 const MODEL = 'claude-opus-5-5';
 
-// Claude API input limits: images up to 5 MB each; PDFs ride in a request
-// capped at 32 MB (base64 grows the bytes by a third, so stay well under).
+// Size limits, checked against Anthropic's docs on 2026-11-21:
+//  - Images: "10 MB (base64-encoded)" per image on the Claude API
+//    (build-with-claude/vision). Base64 adds a third, so 5 MB raw is about
+//    6.7 MB encoded: comfortably inside, with room for the JSON around it.
+//    Images over 8000x8000 px are refused; larger-than-needed ones are
+//    downscaled by the API, not rejected.
+//  - PDFs: the whole request may be up to 128 MB on the first-party API
+//    (build-with-claude/pdf-support; api/errors: 413 request_too_large),
+//    up to 600 pages. 20 MB raw is about 27 MB encoded, far inside that.
+// Both limits are deliberately conservative, not the API maximums.
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
@@ -132,8 +140,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (req.method !== 'POST') return json(405, { error: 'Use POST.' });
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) return json(401, { error: 'Not signed in.' });
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token === authHeader) return json(401, { error: 'Not signed in.' });
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) return json(500, { error: 'AI extraction is not configured on the server (ANTHROPIC_API_KEY missing).' });
@@ -145,7 +154,9 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  // Supabase's documented Edge Function pattern: verify the caller's JWT
+  // explicitly with the Auth server, rather than relying on a session.
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData?.user) return json(401, { error: 'Not signed in.' });
 
   const { data: business, error: businessError } = await supabase.from('businesses').select('id').maybeSingle();
@@ -210,18 +221,27 @@ Deno.serve(async (req) => {
       ],
     });
   } catch (err) {
+    // Logs carry only status codes, request ids and sizes — never document
+    // content or the API's message text, which can quote parts of the input.
     if (err instanceof Anthropic.RateLimitError) {
+      logSafe('claude_rate_limited', { status: err.status, request_id: err.requestID, business_id: business.id });
       return json(503, { error: 'The AI service is busy. Wait a minute and try again.' });
     }
     if (err instanceof Anthropic.BadRequestError) {
-      console.error('Claude rejected the request:', err.message);
+      logSafe('claude_bad_request', {
+        status: err.status,
+        request_id: err.requestID,
+        business_id: business.id,
+        file_kind: isPdf ? 'pdf' : 'image',
+        file_bytes: bytes.byteLength,
+      });
       return json(422, { error: 'The AI service could not read that file. Try a clearer photo or a different export.' });
     }
     if (err instanceof Anthropic.APIError) {
-      console.error(`Claude API error ${err.status}:`, err.message);
+      logSafe('claude_api_error', { status: err.status, request_id: err.requestID, business_id: business.id });
       return json(502, { error: 'The AI service returned an error. Try again shortly.' });
     }
-    console.error('Unexpected error calling Claude:', err);
+    logSafe('claude_unreachable', { error_name: err instanceof Error ? err.name : typeof err, business_id: business.id });
     return json(502, { error: 'Could not reach the AI service.' });
   }
 
@@ -241,12 +261,23 @@ Deno.serve(async (req) => {
   try {
     extraction = JSON.parse(text);
   } catch {
-    console.error('Unparseable model output:', text.slice(0, 500));
+    logSafe('unparseable_model_output', {
+      request_id: response._request_id,
+      business_id: business.id,
+      stop_reason: response.stop_reason,
+      output_chars: text.length,
+    });
     return json(502, { error: 'The AI service returned an unreadable answer. Try again.' });
   }
 
   return json(200, { model: response.model, extraction });
 });
+
+// One JSON line per event, with only non-sensitive fields: never file
+// names, paths, document text or model output.
+function logSafe(event: string, fields: Record<string, string | number | null | undefined>): void {
+  console.error(JSON.stringify({ event, ...fields }));
+}
 
 // Chunked so large files don't overflow the argument limit of
 // String.fromCharCode.apply.

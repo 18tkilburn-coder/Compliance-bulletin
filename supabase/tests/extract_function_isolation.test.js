@@ -115,6 +115,16 @@ async function main() {
       const status = await invokeStatus(anon, { path: bPath });
       report('anon client names B\'s path — refused with 401', status === 401, `got ${status}`);
     }
+
+    {
+      // A forged token must not get past the function's own JWT check.
+      const { error } = await anon.functions.invoke(FUNCTION_NAME, {
+        body: { path: bPath },
+        headers: { Authorization: 'Bearer not-a-real-token' },
+      });
+      const status = !error ? 200 : error.context && typeof error.context.status === 'number' ? error.context.status : -1;
+      report('forged bearer token names B\'s path — refused with 401', status === 401, `got ${status}`);
+    }
   } finally {
     await asB.storage.from(BUCKET).remove([bPath]);
   }
