@@ -220,9 +220,9 @@ function parsePackingSlipLines(textLines) {
   return { groups, grandTotal };
 }
 
-// Runs the full import: extract → parse → shape into the same line objects
-// readLines() produces from the manual table, flagging any group whose
-// computed sum doesn't match the slip's own "<product> Total" row.
+// Runs the full import: extract → parse → shape into the line objects the
+// review grid is filled from, flagging any group whose computed sum
+// doesn't match the slip's own "<product> Total" row.
 async function importPackingSlipPdf(file) {
   const textLines = await extractPdfTextLines(file);
   const { groups, grandTotal } = parsePackingSlipLines(textLines);
@@ -244,11 +244,12 @@ function packingSlipGroupsFromAiExtraction(extraction) {
     const key = `${productText}\u0000${flavour}`.toLowerCase();
     let group = byKey.get(key);
     if (!group) {
-      group = { productText, flavour, batchCodes: [], quantity: 0, bbeDates: [], statedTotal: null };
+      group = { productText, flavour, batchCodes: [], quantity: 0, bbeDates: [], statedTotal: null, uncertain: false };
       byKey.set(key, group);
       groups.push(group);
     }
     (p.rows || []).forEach((r) => {
+      if (r.uncertain === true) group.uncertain = true;
       group.batchCodes.push(String(r.batch_code || '').trim());
       group.quantity += Number(r.quantity) || 0;
       group.bbeDates.push(formatBestBefore(String(r.bbe_month).padStart(2, '0'), String(r.bbe_year).slice(-2)));
@@ -262,9 +263,9 @@ function packingSlipGroupsFromAiExtraction(extraction) {
 }
 
 // Shared by the PDF-text parser and the AI extraction: shapes parsed
-// groups into the same line objects readLines() produces from the manual
-// table, flagging any group whose computed sum doesn't match the slip's
-// own "<product> Total" row.
+// groups into the line objects the review grid is filled from, flagging
+// any group whose computed sum doesn't match the slip's own
+// "<product> Total" row.
 function packingSlipGroupsToLines(groups) {
   return groups.map((g) => {
     const flagged = g.statedTotal !== null && g.statedTotal !== g.quantity;
@@ -281,20 +282,73 @@ function packingSlipGroupsToLines(groups) {
       // reproduced deliberately, not fixed, per the handover's own note
       // that no real delivery has shown it going wrong in practice).
       bbe: [...new Set(g.bbeDates)].sort().join(' / '),
-      // bbeMonth/bbeYear (the single earliest date) are kept only to
-      // prefill the review table's month/year selects for the common
-      // single-date case — see addRow()/readLines() below for how a
-      // genuinely multi-date line is preserved through editing instead of
-      // being silently collapsed to one date by those selects.
+      // bbeMonth/bbeYear: the single earliest date, kept for callers that
+      // want one month/year pair. The review grid edits the full `bbe`
+      // text instead, so a multi-date line stays editable without being
+      // collapsed to one date.
       bbeMonth: [...new Set(g.bbeDates)].sort()[0]?.split('/')[0] || '',
       bbeYear: [...new Set(g.bbeDates)].sort()[0]?.split('/')[1] || '',
       batchCodes: g.batchCodes,
+      // The sheet's own printed subtotal for this line (or null), shown
+      // and editable in the review grid's "Sheet subtotal" column.
+      statedTotal: g.statedTotal,
+      // Set only by the AI path, when the model marked a row as hard to
+      // read or hand-corrected.
+      uncertain: !!g.uncertain,
       flagged,
       flagReason: flagged
-        ? `Document's own subtotal for this line is ${g.statedTotal.toLocaleString()}, but its batch rows add up to ${g.quantity.toLocaleString()} — check against the packing slip.`
+        ? `Document's own subtotal for this line is ${g.statedTotal.toLocaleString()}, but its batch rows add up to ${g.quantity.toLocaleString()} — check against the delivery note.`
         : null,
     };
   });
+}
+
+// For 'split' mode: compares each line's entered quantity with what its
+// pallet labels would actually show, by running each line on its own
+// through the unchanged LabelEngine.buildPallets(). The 5% remainder merge
+// keeps the total; the 105% cap can lower it (the excess is dropped, as in
+// the original automation). Returns one entry per line that differs, with
+// its 1-based position in `lines`. Lines whose size has no limit yet are
+// skipped (the missing-limit prompt handles those first).
+function palletQuantityDiscrepancies(lines, limits) {
+  const out = [];
+  lines.forEach((line, i) => {
+    const built = LabelEngine.buildPallets([line], limits);
+    if (built.missingSizes) return;
+    const onLabels = built.pallets.reduce((sum, p) => sum + p.quantity, 0);
+    if (onLabels !== line.quantity) {
+      out.push({
+        row: i + 1,
+        label: `${line.productText || line.name}${line.flavour ? ` (${line.flavour})` : ''}`,
+        entered: line.quantity,
+        onLabels,
+        max: limits[line.sizeKey],
+        pallets: built.pallets.map((p) => p.quantity),
+      });
+    }
+  });
+  return out;
+}
+
+// Review-grid best-before field: accepts "8/29", "08/29", "08/2029", or
+// several dates separated by " / ", commas or spaces. Returns the same
+// deduped, text-sorted "MM/YY / MM/YY" string the import path produces
+// (matching the reference automation's display), or ok:false if anything
+// in the field isn't a valid month/year. An empty field is ok with ''.
+function normaliseBestBeforeText(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return { ok: true, value: '' };
+  const dates = [];
+  const pattern = /(\d{1,2})\/(\d{4}|\d{2})(?!\d)/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const month = Number(match[1]);
+    if (month < 1 || month > 12) return { ok: false, value: '' };
+    dates.push(formatBestBefore(String(month).padStart(2, '0'), match[2].slice(-2)));
+  }
+  const leftover = text.replace(pattern, '').replace(/[\s\/,;]+/g, '');
+  if (!dates.length || leftover) return { ok: false, value: '' };
+  return { ok: true, value: [...new Set(dates)].sort().join(' / ') };
 }
 
 // Packing-slip files over this size aren't kept as a copy in the history
@@ -370,6 +424,28 @@ function formatPalletBatchDate(timestamp) {
 // MAX_STORED_SOURCE_FILE_BYTES), or a path into Supabase Storage (the
 // Supabase-configured path, which has no such size cap). Exactly one of
 // these two fields is ever set on a given batch, never both.
+// Download name for a generated labels PDF. Drops the uploaded file's own
+// extension (a batch is often named after its "slip.pdf" or "photo.jpg",
+// which used to give "slip.pdf.pdf"), replaces characters unsafe in
+// filenames, and adds exactly one ".pdf". "slip.pdf-labels" ->
+// "slip-labels.pdf".
+function labelsPdfFilename(base) {
+  const cleaned = String(base || '')
+    .replace(/(\.(pdf|jpe?g|png|webp))+(?=-labels$|$)/gi, '')
+    .replace(/[^\w.\-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return `${cleaned || 'pallet-labels'}.pdf`;
+}
+
+// History text for a batch's quantity: the units actually on its labels
+// (the sum of its pallets), plus the delivery note's grand total when the
+// pallet cap made the two differ.
+function batchUnitsText(batch) {
+  const onLabels = (batch.pallets || []).reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
+  const text = `${onLabels.toLocaleString()} unit${onLabels === 1 ? '' : 's'} on labels`;
+  return batch.grandTotal !== onLabels ? `${text} (grand total ${batch.grandTotal.toLocaleString()})` : text;
+}
+
 function batchHasSourceFile(batch) {
   return !!(batch.sourceFileDataUrl || batch.sourceFilePath);
 }
@@ -393,13 +469,27 @@ function openPalletLabelBatch(batchId) {
 }
 
 function renderPalletLabelsScreen(root) {
+  // ----- Label Generator (unified) -----
+  // One place to make labels. Two ways in — upload a delivery note (parsed
+  // locally, or read by AI for photos/scans) or type the lines by hand —
+  // and both land in the SAME review grid below, with the same row
+  // functions, the same validation and the same hand-off to LabelEngine,
+  // history and the PDF. Replaces the old separate "New Batch" and "Quick
+  // Labels" tabs; their two behaviours survive as the grid's two label
+  // modes:
+  //   'split'   — each line is split into pallets by its size limit and
+  //               the line total must match the grand total exactly
+  //               (LabelEngine 'strict-total-match'; the old New Batch).
+  //   'per-row' — each row is exactly one label, BBE/batch optional
+  //               (LabelEngine 'free-form'; the old Quick Labels).
+
   let rowCounter = 0;
   function nextRowId() {
     rowCounter += 1;
     return `prow_${rowCounter}`;
   }
 
-  // Tracks the packing-slip file (if any) behind the batch currently being
+  // Tracks the delivery-note file (if any) behind the batch currently being
   // built, so a successful Generate can save a copy of it into the history
   // log alongside the labels it produced.
   let currentSourceFile = null;
@@ -409,19 +499,22 @@ function renderPalletLabelsScreen(root) {
   let currentSourceFilePath = null;
   let aiAvailable = false;
 
+  // What the review grid is currently showing: where the lines came from,
+  // which label mode applies, and any notes the extraction left.
+  let review = null;
+
   if (pendingPalletHistoryBatchId) {
     const batchId = pendingPalletHistoryBatchId;
     pendingPalletHistoryBatchId = null;
     renderBatchDetail(batchId);
   } else {
-    renderInputStep();
+    renderGeneratorLanding();
   }
 
   function subNavHtml(active) {
     return `
       <div class="sub-tabs">
-        <button type="button" class="sub-tab-btn${active === 'new' ? ' active' : ''}" data-subtab="new">New Batch</button>
-        <button type="button" class="sub-tab-btn${active === 'quick' ? ' active' : ''}" data-subtab="quick">Quick Labels</button>
+        <button type="button" class="sub-tab-btn${active === 'generate' ? ' active' : ''}" data-subtab="generate">Label Generator</button>
         <button type="button" class="sub-tab-btn${active === 'history' ? ' active' : ''}" data-subtab="history">Past Pallet Labels</button>
         <button type="button" class="sub-tab-btn${active === 'limits' ? ' active' : ''}" data-subtab="limits">Size Limits</button>
       </div>
@@ -431,10 +524,8 @@ function renderPalletLabelsScreen(root) {
   function wireSubNav() {
     document.querySelectorAll('.sub-tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.subtab === 'new') {
-          renderInputStep();
-        } else if (btn.dataset.subtab === 'quick') {
-          renderQuickLabelsTab();
+        if (btn.dataset.subtab === 'generate') {
+          renderGeneratorLanding();
         } else if (btn.dataset.subtab === 'limits') {
           renderSizeLimitsTab();
         } else {
@@ -458,33 +549,75 @@ function renderPalletLabelsScreen(root) {
     `;
   }
 
-  async function renderInputStep() {
+  function resetSource() {
     currentSourceFile = null;
     currentSourceFileDataUrl = null;
     currentSourceFilePath = null;
+  }
 
-    const limitsHtml = await limitsReferenceHtml();
-    // Without a signed-in Supabase business there's no Edge Function to
-    // call, so the dropzone text and accepted types stay exactly as before.
+  // ----- Step 1: landing — choose how to supply the information -----
+
+  async function renderGeneratorLanding() {
+    resetSource();
+    review = null;
     aiAvailable = await PalletLabelsBackend.aiExtractionAvailable().catch(() => false);
+
+    root.innerHTML = `
+      ${subNavHtml('generate')}
+      <div class="card">
+        <h2>Label Generator</h2>
+        <p class="helper-text">
+          Choose how to supply the label details. Either way you&rsquo;ll check and edit every line in the
+          same review table before any labels are made.
+        </p>
+        <div class="label-gen-choices">
+          <button type="button" class="label-gen-choice" id="label-gen-upload">
+            <span class="label-gen-choice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            </span>
+            <span class="label-gen-choice-title">Upload delivery note</span>
+            <span class="label-gen-choice-text">${
+              aiAvailable
+                ? 'A PDF, or a photo of the printed sheet. The lines are read for you to check.'
+                : 'A PDF exported from the supplier&rsquo;s system. The lines are read for you to check.'
+            }</span>
+          </button>
+          <button type="button" class="label-gen-choice" id="label-gen-manual">
+            <span class="label-gen-choice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M13.5 6.5l3 3"/></svg>
+            </span>
+            <span class="label-gen-choice-title">Manual entry</span>
+            <span class="label-gen-choice-text">Type the product, quantity, best-before and batch details yourself.</span>
+          </button>
+        </div>
+      </div>
+    `;
+    wireSubNav();
+    document.getElementById('label-gen-upload').addEventListener('click', renderUploadStep);
+    document.getElementById('label-gen-manual').addEventListener('click', () =>
+      renderReviewGrid({ source: 'manual', mode: 'per-row', filename: '', warnings: [], grandTotal: null, lines: [{}] })
+    );
+  }
+
+  // ----- Step 2a: upload a delivery note -----
+
+  function renderUploadStep() {
+    resetSource();
     const dropzoneText = aiAvailable
-      ? 'Drag &amp; drop the packing slip (PDF or photo) here, or click to choose a file'
-      : 'Drag &amp; drop the packing slip PDF here, or click to choose a file';
+      ? 'Drag &amp; drop the delivery note (PDF or photo) here, or click to choose a file'
+      : 'Drag &amp; drop the delivery note PDF here, or click to choose a file';
     const dropzoneHint = aiAvailable
-      ? 'PDF or a clear photo (JPEG/PNG). Photos and scanned PDFs are read by AI &mdash; always check every line.'
+      ? 'PDF or a clear photo (JPEG/PNG/WebP). Photos and scanned PDFs are read by AI &mdash; you&rsquo;ll check every line next.'
       : 'PDF only &mdash; a digital export with real text, not a scanned photo.';
     const acceptTypes = aiAvailable
       ? '.pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
       : '.pdf,application/pdf';
 
     root.innerHTML = `
-      ${subNavHtml('new')}
+      ${subNavHtml('generate')}
       <div class="card">
-        <h2>Pallet Labels</h2>
-        <p class="helper-text">
-          Upload the packing slip PDF to generate pallet labels. Review the imported lines below &mdash; every
-          pallet's quantity must add up to the grand total exactly before labels are produced.
-        </p>
+        <button type="button" class="link-btn label-gen-back" id="label-gen-back">&larr; Back</button>
+        <h2>Upload delivery note</h2>
         <label class="upload-dropzone" id="pallet-upload-dropzone" for="pallet-file-input">
           <span class="upload-dropzone-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -492,105 +625,24 @@ function renderPalletLabelsScreen(root) {
           <span class="upload-dropzone-text">${dropzoneText}</span>
           <span class="upload-dropzone-hint">${dropzoneHint}</span>
         </label>
-        <input type="file" id="pallet-file-input" accept="${acceptTypes}" hidden />
+        <input type="file" id="pallet-file-input" accept="${acceptTypes}" ${aiAvailable ? 'capture="environment"' : ''} hidden />
         <div id="pallet-import-status"></div>
         <div id="pallet-import-summary"></div>
-        ${limitsHtml}
-        <div class="table-scroll">
-          <table class="line-items-table pallet-input-table" id="pallet-lines-table">
-            <thead>
-              <tr>
-                <th>Product + size</th>
-                <th>Flavour</th>
-                <th>Qty</th>
-                <th>BBE</th>
-                <th>Batch code(s)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="pallet-lines-body"></tbody>
-          </table>
-        </div>
-
-        <div class="field mt-sm">
-          <label>Grand total (from the packing slip)</label>
-          <input type="number" id="pallet-grand-total" min="0" placeholder="e.g. 500" />
-        </div>
-
-        <div id="pallet-generate-feedback"></div>
-
-        <button type="button" class="btn btn-primary btn-block mt-sm" id="pallet-generate-btn">Generate Pallet Labels</button>
       </div>
-      <div id="pallet-missing-size-wrap"></div>
-      <div id="pallet-preview-wrap"></div>
     `;
-
-    const tbody = document.getElementById('pallet-lines-body');
-
-    function addRow(prefill) {
-      const rowId = nextRowId();
-      const tr = document.createElement('tr');
-      tr.dataset.rowId = rowId;
-      if (prefill && prefill.flagged) {
-        tr.classList.add('pallet-line-flagged');
-        tr.title = prefill.flagReason || '';
-      }
-      const p = prefill || {};
-      const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
-      // A product can have more than one distinct best-before date across
-      // its batch rows (e.g. "08/29 / 10/29 / 11/29") — the reference
-      // automation shows all of them on one label. Two month/year selects
-      // can only ever hold one date, so a genuinely multi-date import is
-      // shown read-only (with its full value preserved in a hidden field
-      // for readLines() below) instead of being silently collapsed to
-      // just the first date the moment the selects render.
-      const isMultiDate = !!(p.bbe && p.bbe.includes(' / '));
-      const bbeCellHtml = isMultiDate
-        ? `
-          <input type="hidden" class="pallet-line-bbe-full" value="${escapeHtml(p.bbe)}" />
-          <span class="pallet-line-bbe-readonly" title="Multiple best-before dates from the packing slip — edit the Product/Flavour/Batch fields if needed, but this date list is kept as imported.">${escapeHtml(p.bbe)}</span>
-        `
-        : `
-          <div class="line-item-bbd">
-            <select class="pallet-line-bbe-month">
-              <option value="">MM</option>
-              ${bestBeforeMonthOptions()
-                .map((m) => `<option value="${m}"${m === p.bbeMonth ? ' selected' : ''}>${m}</option>`)
-                .join('')}
-            </select>
-            <select class="pallet-line-bbe-year">
-              <option value="">YY</option>
-              ${bestBeforeYearOptions()
-                .map((y) => `<option value="${y}"${y === p.bbeYear ? ' selected' : ''}>${y}</option>`)
-                .join('')}
-            </select>
-          </div>
-        `;
-      tr.innerHTML = `
-        <td><input type="text" class="pallet-line-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.productText || '')}" /></td>
-        <td><input type="text" class="pallet-line-flavour" placeholder="e.g. Chocolate" value="${escapeHtml(p.flavour || '')}" /></td>
-        <td><input type="number" class="pallet-line-qty" min="1" placeholder="500" value="${p.quantity || ''}" /></td>
-        <td>${bbeCellHtml}</td>
-        <td><input type="text" class="pallet-line-batch" placeholder="e.g. 123-456" value="${escapeHtml(batchValue)}" /></td>
-        <td><button type="button" class="btn btn-sm btn-danger pallet-line-remove">Remove</button></td>
-      `;
-      tr.querySelector('.pallet-line-remove').addEventListener('click', () => tr.remove());
-      tbody.appendChild(tr);
-    }
-
-    document.getElementById('pallet-generate-btn').addEventListener('click', attemptGenerate);
-    wirePdfImport(addRow, tbody);
     wireSubNav();
+    document.getElementById('label-gen-back').addEventListener('click', renderGeneratorLanding);
+    wireDeliveryNoteImport();
   }
 
-  function wirePdfImport(addRow, tbody) {
+  function wireDeliveryNoteImport() {
     const dropzone = document.getElementById('pallet-upload-dropzone');
     const fileInput = document.getElementById('pallet-file-input');
     const statusEl = document.getElementById('pallet-import-status');
     const summaryEl = document.getElementById('pallet-import-summary');
 
     // Bumped on every new file, so a slow AI read of an earlier file can't
-    // overwrite the table after a newer file has been dropped.
+    // replace the screen after a newer file has been chosen.
     let importToken = 0;
 
     function showReadingStatus(file, viaAi) {
@@ -626,8 +678,8 @@ function renderPalletLabelsScreen(root) {
       if (!looksLikePdf && !(aiAvailable && looksLikeImage)) {
         showToast(
           aiAvailable
-            ? 'Use a PDF or a JPEG/PNG/WebP photo of the packing slip.'
-            : 'Only PDF packing slips can be imported right now — photos and scanned images aren’t supported.'
+            ? 'Use a PDF or a JPEG/PNG/WebP photo of the delivery note.'
+            : 'Only PDF delivery notes can be imported right now — photos and scanned images aren’t supported.'
         );
         return;
       }
@@ -642,7 +694,7 @@ function renderPalletLabelsScreen(root) {
       if (file.size <= MAX_STORED_SOURCE_FILE_BYTES) {
         readFileAsDataUrl(file)
           .then((dataUrl) => {
-            currentSourceFileDataUrl = dataUrl;
+            if (token === importToken) currentSourceFileDataUrl = dataUrl;
           })
           .catch(() => {});
       }
@@ -659,51 +711,34 @@ function renderPalletLabelsScreen(root) {
         .then(({ lines, grandTotal, viaAi, warnings }) => {
           if (token !== importToken) return;
           statusEl.innerHTML = '';
-          const warningsHtml = warnings.length
-            ? `<ul class="pallet-ai-warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
-            : '';
           if (!lines.length) {
-            summaryEl.innerHTML = viaAi
-              ? `
+            const warningsHtml = warnings.length
+              ? `<ul class="pallet-ai-warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+              : '';
+            summaryEl.innerHTML = `
               <p class="pallet-totals-mismatch">
-                The AI couldn&rsquo;t find any packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
-                Try a sharper, well-lit photo of the whole sheet, or enter the lines by hand below.
+                ${
+                  viaAi
+                    ? `The AI couldn&rsquo;t find any delivery-note rows in &ldquo;${escapeHtml(file.name)}&rdquo;. Try a sharper, well-lit photo of the whole sheet.`
+                    : `Couldn&rsquo;t find any recognisable delivery-note rows in &ldquo;${escapeHtml(file.name)}&rdquo;. It may be a scanned image rather than a digital PDF with real text &mdash; try exporting it directly from the system that made it, or a different file.`
+                }
               </p>
               ${warningsHtml}
-            `
-              : `
-              <p class="pallet-totals-mismatch">
-                Couldn&rsquo;t find any recognisable packing-slip rows in &ldquo;${escapeHtml(file.name)}&rdquo;.
-                It may be a scanned image rather than a digital PDF with real text &mdash; try exporting it directly
-                from the system that made it, or a different file.
-              </p>
+              <button type="button" class="btn mt-sm" id="label-gen-manual-instead">Enter the lines manually instead</button>
             `;
+            document.getElementById('label-gen-manual-instead').addEventListener('click', () =>
+              renderReviewGrid({ source: 'manual', mode: 'split', filename: file.name, warnings: [], grandTotal: null, lines: [{}] })
+            );
             return;
           }
-
-          tbody.innerHTML = '';
-          lines.forEach((line) => addRow(line));
-
-          if (grandTotal !== null) {
-            document.getElementById('pallet-grand-total').value = grandTotal;
-          }
-
-          const flaggedLines = lines.filter((l) => l.flagged);
-          const computedTotal = lines.reduce((sum, l) => sum + l.quantity, 0);
-          const totalMatches = grandTotal === null || computedTotal === grandTotal;
-
-          summaryEl.innerHTML = `
-            <p class="${flaggedLines.length || !totalMatches ? 'pallet-totals-mismatch' : 'pallet-totals-ok'}">
-              ${viaAi ? '<strong>Read by AI.</strong> ' : ''}Imported ${lines.length} line${lines.length === 1 ? '' : 's'} from &ldquo;${escapeHtml(file.name)}&rdquo;
-              (${computedTotal.toLocaleString()} units${grandTotal !== null ? ` vs. the slip's stated grand total of ${grandTotal.toLocaleString()}` : ''}).
-              ${totalMatches ? '' : ' These do not match — check the lines below.'}
-              ${flaggedLines.length
-                ? ` ${flaggedLines.length} line${flaggedLines.length === 1 ? '' : 's'} flagged (highlighted below): its batch rows don't add up to the slip's own subtotal for that product.`
-                : ' Every line’s batch rows matched the slip’s own subtotal for that product.'}
-              Review every row against the packing slip before generating.
-            </p>
-            ${warningsHtml}
-          `;
+          renderReviewGrid({
+            source: viaAi ? 'ai' : 'pdf',
+            mode: 'split',
+            filename: file.name,
+            warnings,
+            grandTotal,
+            lines,
+          });
         })
         .catch((err) => {
           if (token !== importToken) return;
@@ -711,7 +746,7 @@ function renderPalletLabelsScreen(root) {
           summaryEl.innerHTML = `
             <p class="pallet-totals-mismatch">
               Couldn&rsquo;t read &ldquo;${escapeHtml(file.name)}&rdquo;: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
-              Try the file again, or a different export of the same packing slip.
+              Try the file again, or a different export of the same delivery note.
             </p>
           `;
         });
@@ -736,48 +771,354 @@ function renderPalletLabelsScreen(root) {
     });
   }
 
-  function readLines() {
-    const rows = Array.from(document.querySelectorAll('#pallet-lines-body tr'));
+  // ----- Step 3: the shared review grid -----
+
+  // `initial`: { source: 'manual'|'pdf'|'ai', mode: 'split'|'per-row',
+  // filename, warnings[], grandTotal (number|null), lines[] } where each
+  // line is the shape packingSlipGroupsToLines() produces (or {} for a
+  // blank manual row).
+  async function renderReviewGrid(initial) {
+    review = {
+      source: initial.source,
+      mode: initial.mode,
+      filename: initial.filename || '',
+      warnings: initial.warnings || [],
+      attempted: false,
+      // Pallet limits, kept so the totals line can warn about units the
+      // pallet cap would leave off the labels while the user is editing.
+      limits: await PalletLabelsBackend.getPalletLimits().catch(() => ({})),
+      lossAcknowledged: null,
+    };
+    const limitsHtml = await limitsReferenceHtml();
+
+    const sourceText =
+      review.source === 'ai'
+        ? `Read by AI from &ldquo;${escapeHtml(review.filename)}&rdquo;. Every line is marked <strong>Needs checking</strong> until you tick it.`
+        : review.source === 'pdf'
+          ? `Imported from &ldquo;${escapeHtml(review.filename)}&rdquo;.`
+          : 'Entered by hand.';
+    const warningsHtml = review.warnings.length
+      ? `
+        <div class="label-review-warnings">
+          <strong>Notes from the AI about this delivery note:</strong>
+          <ul class="pallet-ai-warnings">${review.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+        </div>
+      `
+      : '';
+
+    root.innerHTML = `
+      ${subNavHtml('generate')}
+      <div class="card">
+        <button type="button" class="link-btn label-gen-back" id="label-gen-back">&larr; Start again</button>
+        <h2>Review labels</h2>
+        <p class="helper-text">${sourceText} Edit anything that&rsquo;s wrong before generating.</p>
+        ${warningsHtml}
+
+        <fieldset class="label-mode">
+          <legend>How to make labels</legend>
+          <label class="label-mode-option">
+            <input type="radio" name="label-mode" value="split"${review.mode === 'split' ? ' checked' : ''} />
+            <span><strong>Split into pallets</strong> &mdash; each line is split by its size limit; the lines must add up to the grand total.</span>
+          </label>
+          <label class="label-mode-option">
+            <input type="radio" name="label-mode" value="per-row"${review.mode === 'per-row' ? ' checked' : ''} />
+            <span><strong>One label per row</strong> &mdash; exactly as entered; best-before and batch are optional.</span>
+          </label>
+        </fieldset>
+
+        ${limitsHtml}
+
+        <div class="table-scroll label-review-scroll">
+          <table class="line-items-table label-review-table" id="label-review-table">
+            <thead>
+              <tr>
+                <th class="label-review-check-col">Checked</th>
+                <th>Product + size</th>
+                <th>Flavour</th>
+                <th>Qty</th>
+                <th class="label-review-subtotal-col">Sheet subtotal</th>
+                <th>Best before</th>
+                <th>Batch code(s)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="label-review-body"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn mt-sm" id="label-review-add">+ Add row</button>
+
+        <div class="label-review-totals">
+          <div class="field">
+            <label for="pallet-grand-total" id="pallet-grand-total-label">Grand total</label>
+            <input type="number" id="pallet-grand-total" min="0" inputmode="numeric" placeholder="e.g. 500" />
+          </div>
+          <p class="label-review-sum" id="label-review-sum" aria-live="polite"></p>
+        </div>
+
+        <div id="pallet-generate-feedback" aria-live="polite"></div>
+
+        <button type="button" class="btn btn-primary btn-block mt-sm" id="pallet-generate-btn">Confirm &amp; Generate Labels</button>
+      </div>
+      <div id="pallet-missing-size-wrap"></div>
+      <div id="pallet-preview-wrap"></div>
+    `;
+    wireSubNav();
+
+    const tbody = document.getElementById('label-review-body');
+    const grandTotalInput = document.getElementById('pallet-grand-total');
+    if (initial.grandTotal !== null && initial.grandTotal !== undefined) grandTotalInput.value = initial.grandTotal;
+
+    (initial.lines.length ? initial.lines : [{}]).forEach((line) =>
+      addReviewRow(tbody, line, { needsCheck: review.source === 'ai' || !!line.flagged || !!line.uncertain })
+    );
+
+    document.getElementById('label-gen-back').addEventListener('click', () => {
+      if (window.confirm('Start again? Everything in this review table will be cleared.')) renderGeneratorLanding();
+    });
+    document.getElementById('label-review-add').addEventListener('click', () => {
+      const tr = addReviewRow(tbody, {}, { needsCheck: false });
+      tr.querySelector('.label-review-product').focus();
+      refreshReview();
+    });
+    document.querySelectorAll('input[name="label-mode"]').forEach((radio) =>
+      radio.addEventListener('change', () => {
+        review.mode = radio.value;
+        refreshReview();
+      })
+    );
+    grandTotalInput.addEventListener('input', refreshReview);
+    tbody.addEventListener('input', refreshReview);
+    tbody.addEventListener('change', refreshReview);
+    document.getElementById('pallet-generate-btn').addEventListener('click', attemptGenerate);
+
+    refreshReview();
+  }
+
+  // One editable row. `needsCheck` rows (AI-read, or subtotal mismatch, or
+  // flagged uncertain) carry a "Checked" tickbox that must be ticked
+  // before generating — extracted values are never treated as confirmed
+  // just because nobody edited them.
+  function addReviewRow(tbody, prefill, { needsCheck }) {
+    const p = prefill || {};
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = nextRowId();
+    if (needsCheck) {
+      tr.dataset.needsCheck = '1';
+      tr.dataset.baseNeedsCheck = '1';
+    }
+    // Subtotal mismatches are re-checked live in validateReview(), so only
+    // the AI's own "unsure" marker is kept as a fixed reason here.
+    if (p.uncertain) tr.dataset.reason = 'The AI was unsure about part of this line — check it against the delivery note.';
+    const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
+    const bbeValue = p.bbe || (p.bbeMonth && p.bbeYear ? formatBestBefore(p.bbeMonth, p.bbeYear) : '');
+    const statedTotal = p.statedTotal === null || p.statedTotal === undefined ? '' : p.statedTotal;
+    tr.innerHTML = `
+      <td data-label="Checked" class="label-review-check-col">${checkCellHtml(needsCheck)}</td>
+      <td data-label="Product + size"><input type="text" class="label-review-product" aria-label="Product and size" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.productText || p.name || '')}" /></td>
+      <td data-label="Flavour"><input type="text" class="label-review-flavour" aria-label="Flavour" placeholder="e.g. Chocolate" value="${escapeHtml(p.flavour || '')}" /></td>
+      <td data-label="Qty"><input type="number" class="label-review-qty" aria-label="Quantity" min="1" step="1" inputmode="numeric" placeholder="500" value="${p.quantity || ''}" /></td>
+      <td data-label="Sheet subtotal" class="label-review-subtotal-col"><input type="number" class="label-review-subtotal" aria-label="Sheet subtotal" min="0" step="1" inputmode="numeric" placeholder="—" value="${statedTotal}" /></td>
+      <td data-label="Best before"><input type="text" class="label-review-bbe" aria-label="Best before (MM/YY)" placeholder="MM/YY" value="${escapeHtml(bbeValue)}" /></td>
+      <td data-label="Batch code(s)"><input type="text" class="label-review-batch" aria-label="Batch codes, comma separated" placeholder="e.g. 123-456, 123-457" value="${escapeHtml(batchValue)}" /></td>
+      <td class="label-review-actions">
+        <button type="button" class="btn btn-sm label-review-duplicate" aria-label="Duplicate this row">Duplicate</button>
+        <button type="button" class="btn btn-sm btn-danger label-review-remove" aria-label="Remove this row">Remove</button>
+      </td>
+    `;
+    tr.querySelector('.label-review-remove').addEventListener('click', () => {
+      tr.remove();
+      refreshReview();
+    });
+    tr.querySelector('.label-review-duplicate').addEventListener('click', () => {
+      // A copy is a new line the user made, so it starts unflagged; the
+      // original keeps its own check state.
+      const copy = readReviewRow(tr);
+      const newTr = addReviewRow(tbody, {
+        productText: copy.productText,
+        flavour: copy.flavour,
+        quantity: copy.qtyRaw,
+        bbe: copy.bbeRaw,
+        batchCodes: copy.batchCodes,
+        statedTotal: null,
+      }, { needsCheck: false });
+      tr.after(newTr);
+      refreshReview();
+    });
+    tbody.appendChild(tr);
+    return tr;
+  }
+
+  function checkCellHtml(needsCheck) {
+    return needsCheck
+      ? '<label class="label-review-check"><input type="checkbox" class="label-review-checked" aria-label="I have checked this line against the delivery note" /> <span>Checked</span></label>'
+      : '<span class="label-review-check-na">&mdash;</span>';
+  }
+
+  function setRowNeedsCheck(tr, needsCheck) {
+    if (needsCheck) tr.dataset.needsCheck = '1';
+    else delete tr.dataset.needsCheck;
+    tr.querySelector('.label-review-check-col').innerHTML = checkCellHtml(needsCheck);
+  }
+
+  function readReviewRow(tr) {
+    const checkbox = tr.querySelector('.label-review-checked');
+    return {
+      productText: tr.querySelector('.label-review-product').value.trim(),
+      flavour: tr.querySelector('.label-review-flavour').value.trim(),
+      qtyRaw: tr.querySelector('.label-review-qty').value.trim(),
+      subtotalRaw: tr.querySelector('.label-review-subtotal').value.trim(),
+      bbeRaw: tr.querySelector('.label-review-bbe').value.trim(),
+      batchCodes: tr
+        .querySelector('.label-review-batch')
+        .value.split(',')
+        .map((b) => b.trim())
+        .filter(Boolean),
+      needsCheck: tr.dataset.needsCheck === '1',
+      checked: !!(checkbox && checkbox.checked),
+    };
+  }
+
+  // Validates every row for the current mode. Returns per-row problems
+  // (keyed by field, for highlighting) plus the lines ready for LabelEngine.
+  function validateReview() {
+    const rows = Array.from(document.querySelectorAll('#label-review-body tr'));
+    const mode = review.mode;
+    const problems = [];
     const lines = [];
-    for (const row of rows) {
-      const productText = row.querySelector('.pallet-line-product').value.trim();
-      const flavour = row.querySelector('.pallet-line-flavour').value.trim();
-      const qtyRaw = row.querySelector('.pallet-line-qty').value;
-      const batchRaw = row.querySelector('.pallet-line-batch').value.trim();
+    let unchecked = 0;
 
-      // A multi-date row (see addRow()) has no month/year selects at all —
-      // its full, already-deduped/sorted date string is read straight from
-      // the hidden field instead.
-      const fullBbeInput = row.querySelector('.pallet-line-bbe-full');
-      let bbe, hasBbe;
-      if (fullBbeInput) {
-        bbe = fullBbeInput.value;
-        hasBbe = !!bbe;
-      } else {
-        const month = row.querySelector('.pallet-line-bbe-month').value;
-        const year = row.querySelector('.pallet-line-bbe-year').value;
-        hasBbe = !!(month && year);
-        bbe = hasBbe ? formatBestBefore(month, year) : '';
+    rows.forEach((tr, index) => {
+      const r = readReviewRow(tr);
+      const n = index + 1;
+      const bad = {};
+      const qty = Number(r.qtyRaw);
+      if (!r.productText) bad.product = 'needs a product';
+      if (!r.qtyRaw || !Number.isInteger(qty) || qty <= 0) bad.qty = 'needs a whole-number quantity above zero';
+      const bbe = normaliseBestBeforeText(r.bbeRaw);
+      if (!bbe.ok) bad.bbe = 'best-before must be MM/YY (several dates separated by " / ")';
+      if (mode === 'split') {
+        if (!r.flavour) bad.flavour = 'needs a flavour';
+        if (bbe.ok && !bbe.value) bad.bbe = 'needs a best-before date';
+        if (!r.batchCodes.length) bad.batch = 'needs at least one batch code';
+      }
+      if (r.subtotalRaw !== '' && (!Number.isInteger(Number(r.subtotalRaw)) || Number(r.subtotalRaw) < 0)) {
+        bad.subtotal = 'sheet subtotal must be a whole number';
+      }
+      if (r.needsCheck && !r.checked) unchecked += 1;
+      Object.keys(bad).forEach((field) => problems.push({ row: n, field, message: bad[field] }));
+
+      // Fields are only highlighted once the user has tried to generate,
+      // so a fresh blank row doesn't open already marked as wrong.
+      tr.querySelectorAll('input').forEach((input) => input.classList.remove('is-invalid'));
+      const fieldClass = {
+        product: '.label-review-product',
+        flavour: '.label-review-flavour',
+        qty: '.label-review-qty',
+        subtotal: '.label-review-subtotal',
+        bbe: '.label-review-bbe',
+        batch: '.label-review-batch',
+      };
+      if (review.attempted) {
+        Object.keys(bad).forEach((field) => tr.querySelector(fieldClass[field]).classList.add('is-invalid'));
       }
 
-      if (!productText || !flavour || !qtyRaw || !hasBbe || !batchRaw) {
-        return { error: 'Every row needs a product + size, flavour, quantity, best-before, and at least one batch code' };
+      // Live subtotal check: the sheet's own printed subtotal against the
+      // quantity on this line. A mismatch flags the row and makes it need
+      // an explicit tick, exactly like an AI-read line.
+      // AI-read and import-flagged rows always need the tick; a row that
+      // only needs it because of a subtotal mismatch goes back to normal
+      // once the mismatch is fixed.
+      const mismatch = r.subtotalRaw !== '' && r.qtyRaw !== '' && Number(r.subtotalRaw) !== qty;
+      const shouldNeedCheck = tr.dataset.baseNeedsCheck === '1' || mismatch;
+      if (shouldNeedCheck !== r.needsCheck) {
+        setRowNeedsCheck(tr, shouldNeedCheck);
+        if (shouldNeedCheck) unchecked += 1;
+        else if (!r.checked) unchecked -= 1;
       }
+      const reason = mismatch
+        ? `The delivery note's own subtotal for this line is ${Number(r.subtotalRaw).toLocaleString()}, but the quantity is ${qty.toLocaleString()} — check it against the delivery note.`
+        : tr.dataset.reason || '';
+      const checkbox = tr.querySelector('.label-review-checked');
+      tr.classList.toggle('pallet-line-flagged', !!reason || (!!checkbox && !checkbox.checked));
+      tr.title = reason;
 
-      lines.push({
-        productText,
-        name: LabelEngine.stripProteinWord(productText),
-        sizeKey: LabelEngine.parseSizeKey(productText),
-        flavour,
-        quantity: Number(qtyRaw),
-        bbe,
-        batchCodes: batchRaw.split(',').map((b) => b.trim()).filter(Boolean),
-      });
+      if (!Object.keys(bad).length) {
+        lines.push(
+          mode === 'split'
+            ? {
+                productText: r.productText,
+                name: LabelEngine.stripProteinWord(r.productText),
+                sizeKey: LabelEngine.parseSizeKey(r.productText),
+                flavour: r.flavour,
+                quantity: qty,
+                bbe: bbe.value,
+                batchCodes: r.batchCodes,
+              }
+            : {
+                // Same shape the old Quick Labels produced: the product
+                // exactly as typed, one label per row.
+                name: r.productText,
+                flavour: r.flavour,
+                quantity: qty,
+                bbe: bbe.value,
+                batchCodes: r.batchCodes,
+              }
+        );
+      }
+    });
+
+    const grandRaw = document.getElementById('pallet-grand-total').value.trim();
+    const grandTotal = grandRaw === '' ? null : Number(grandRaw);
+    return { rowCount: rows.length, problems, unchecked, lines, grandTotal, grandRaw };
+  }
+
+  // Re-runs validation after every edit, so the totals line, the flagged
+  // rows and the field highlights are always current.
+  function refreshReview() {
+    if (!review) return;
+    const mode = review.mode;
+    const table = document.getElementById('label-review-table');
+    if (!table) return;
+    const { rowCount, problems, unchecked, grandTotal, lines } = validateReview();
+    table.classList.toggle('mode-per-row', mode === 'per-row');
+    // The Checked column only appears while at least one row needs a tick.
+    table.classList.toggle('has-checks', !!document.querySelector('#label-review-body tr[data-needs-check="1"]'));
+    document.getElementById('pallet-grand-total-label').textContent =
+      mode === 'split' ? 'Grand total (from the delivery note) — required' : 'Grand total (optional — checked if entered)';
+
+    const rows = Array.from(document.querySelectorAll('#label-review-body tr'));
+    const sum = rows.reduce((total, tr) => {
+      const q = Number(tr.querySelector('.label-review-qty').value);
+      return total + (Number.isFinite(q) ? q : 0);
+    }, 0);
+    const sumEl = document.getElementById('label-review-sum');
+    let sumText = `${rowCount} line${rowCount === 1 ? '' : 's'} &middot; quantities add up to <strong>${sum.toLocaleString()}</strong>`;
+    let sumClass = '';
+    if (grandTotal !== null && Number.isFinite(grandTotal)) {
+      const diff = sum - grandTotal;
+      sumText += diff === 0 ? ' &mdash; matches the grand total.' : ` &mdash; <strong>${Math.abs(diff).toLocaleString()} ${diff > 0 ? 'over' : 'under'}</strong> the grand total of ${grandTotal.toLocaleString()}.`;
+      sumClass = diff === 0 ? 'is-ok' : 'is-bad';
+    } else if (mode === 'split') {
+      sumText += ' &mdash; enter the delivery note&rsquo;s grand total.';
+      sumClass = 'is-bad';
+    } else {
+      sumText += '.';
     }
-    if (!lines.length) {
-      return { error: 'Upload a packing slip PDF first' };
+    // Live preview of the pallet cap's effect, from the currently valid lines.
+    let lossClass = '';
+    if (mode === 'split' && review.limits) {
+      const lost = palletQuantityDiscrepancies(lines, review.limits).reduce((sum, d) => sum + (d.entered - d.onLabels), 0);
+      if (lost > 0) {
+        sumText += ` <strong>The pallet rules would leave ${lost.toLocaleString()} unit${lost === 1 ? '' : 's'} off the labels</strong> &mdash; details when you generate.`;
+        lossClass = ' has-loss';
+      }
     }
-    return { lines };
+    if (unchecked) sumText += ` ${unchecked} line${unchecked === 1 ? '' : 's'} still need${unchecked === 1 ? 's' : ''} checking.`;
+    if (problems.length && review.attempted) {
+      sumText += ` ${problems.length} field${problems.length === 1 ? '' : 's'} need${problems.length === 1 ? 's' : ''} fixing.`;
+    }
+    sumEl.innerHTML = sumText;
+    sumEl.className = `label-review-sum ${sumClass}${lossClass}`;
   }
 
   async function attemptGenerate() {
@@ -788,39 +1129,89 @@ function renderPalletLabelsScreen(root) {
     missingWrap.innerHTML = '';
     previewWrap.innerHTML = '';
 
-    const { lines, error } = readLines();
-    if (error) {
-      showToast(error);
+    const mode = review.mode;
+    review.attempted = true;
+    const { rowCount, problems, unchecked, lines, grandTotal, grandRaw } = validateReview();
+    refreshReview();
+    const errors = [];
+    if (!rowCount) errors.push('Add at least one line.');
+    problems.forEach((p) => errors.push(`Row ${p.row}: ${p.message}.`));
+    if (unchecked) {
+      errors.push(
+        `${unchecked} line${unchecked === 1 ? '' : 's'} marked as needing checking ${unchecked === 1 ? 'is' : 'are'} not ticked. Compare ${
+          unchecked === 1 ? 'it' : 'each one'
+        } with the delivery note, correct anything wrong, then tick Checked.`
+      );
+    }
+    if (grandRaw !== '' && (!Number.isInteger(grandTotal) || grandTotal < 0)) errors.push('The grand total must be a whole number.');
+    if (mode === 'split' && grandRaw === '') errors.push('Enter the delivery note’s grand total.');
+    if (errors.length) {
+      feedbackEl.innerHTML = `
+        <div class="pallet-totals-mismatch">
+          Nothing has been generated yet. Fix the following first:
+          <ul class="label-review-errors">${errors.map((e) => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+        </div>
+      `;
+      feedbackEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
-    const grandTotalRaw = document.getElementById('pallet-grand-total').value;
-    if (!grandTotalRaw) {
-      showToast('Enter the packing slip’s grand total');
-      return;
+    let pallets;
+    let savedGrandTotal;
+    if (mode === 'split') {
+      const limits = await PalletLabelsBackend.getPalletLimits();
+      // Missing-size check first, same order as before: a manager should be
+      // asked for a pallet limit even if the total also happens to be wrong
+      // yet, rather than the two warnings fighting over which shows first.
+      const built = LabelEngine.buildPallets(lines, limits);
+      if (built.missingSizes) {
+        renderMissingSizePrompt(built.missingSizes, () => attemptGenerate());
+        return;
+      }
+      const validation = LabelEngine.validatePalletLines(lines, { mode: 'strict-total-match', grandTotal });
+      if (!validation.ok) {
+        feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
+        return;
+      }
+      review.limits = limits;
+      // The splitting rules (unchanged) can print fewer units than were
+      // entered: the 105% cap prints a slightly-over pallet as exactly the
+      // limit. Nothing is saved until the operator has seen exactly what
+      // would be lost and confirmed it for this exact set of lines.
+      const discrepancies = palletQuantityDiscrepancies(lines, limits);
+      if (discrepancies.length) {
+        // Tied to every line (in order), the grand total and the outcome,
+        // so changing any row, quantity, product, size limit or the grand
+        // total needs a fresh confirmation.
+        const signature = JSON.stringify({
+          lines: lines.map((l) => [l.productText, l.flavour, l.sizeKey, l.quantity, l.bbe, l.batchCodes]),
+          grandTotal,
+          discrepancies: discrepancies.map((d) => [d.row, d.entered, d.onLabels, d.max]),
+        });
+        if (review.lossAcknowledged !== signature) {
+          renderLossAcknowledgement(discrepancies, signature);
+          return;
+        }
+      }
+      pallets = built.pallets;
+      savedGrandTotal = grandTotal;
+    } else {
+      const validation = LabelEngine.validatePalletLines(lines, { mode: 'free-form' });
+      if (!validation.ok) {
+        feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
+        return;
+      }
+      // Each row IS one label — no pallet-size splitting applies here.
+      pallets = lines;
+      const sum = pallets.reduce((total, p) => total + p.quantity, 0);
+      if (grandTotal !== null && sum !== grandTotal) {
+        feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">The rows add up to ${sum.toLocaleString()}, but the grand total entered is ${grandTotal.toLocaleString()}. Fix the rows, or clear the grand total.</p>`;
+        return;
+      }
+      savedGrandTotal = sum;
     }
-    const grandTotal = Number(grandTotalRaw);
 
-    const limits = await PalletLabelsBackend.getPalletLimits();
-
-    // Missing-size check first, same order as before: a manager should be
-    // asked for a pallet limit even if the total also happens to be wrong
-    // yet, rather than the two warnings fighting over which shows first.
-    const built = LabelEngine.buildPallets(lines, limits);
-    if (built.missingSizes) {
-      renderMissingSizePrompt(built.missingSizes, () => attemptGenerate());
-      return;
-    }
-
-    const validation = LabelEngine.validatePalletLines(lines, { mode: 'strict-total-match', grandTotal });
-    if (!validation.ok) {
-      feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
-      return;
-    }
-
-    const pallets = built.pallets;
-    const palletSumCheck = pallets.reduce((sum, p) => sum + p.quantity, 0);
-
+    const palletSumCheck = pallets.reduce((total, p) => total + p.quantity, 0);
     let batchRecord;
     try {
       batchRecord = await PalletLabelsBackend.addPalletLabelBatch({
@@ -828,21 +1219,34 @@ function renderPalletLabelsScreen(root) {
         sourceFileDataUrl: currentSourceFileDataUrl,
         existingSourceFilePath: currentSourceFilePath,
         pallets,
-        grandTotal,
+        grandTotal: savedGrandTotal,
       });
     } catch (err) {
       feedbackEl.innerHTML = `
         <p class="pallet-totals-mismatch">
-          Totals checked out, but saving this batch failed: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
+          The lines checked out, but saving this batch failed: ${escapeHtml(err && err.message ? err.message : 'unknown error')}.
           Nothing was saved to history — try again.
         </p>
       `;
       return;
     }
 
+    // Reports what the labels actually cover, which can be less than the
+    // delivery note's grand total when the pallet cap has applied.
+    const unlabelled = mode === 'split' ? savedGrandTotal - palletSumCheck : 0;
     feedbackEl.innerHTML = `
       <p class="pallet-totals-ok">
-        Totals check passed: ${palletSumCheck.toLocaleString()} across ${pallets.length} pallet${pallets.length === 1 ? '' : 's'} = grand total ${grandTotal.toLocaleString()}.
+        ${
+          mode === 'split'
+            ? `Lines matched the grand total of ${savedGrandTotal.toLocaleString()}. Generated ${pallets.length} pallet label${
+                pallets.length === 1 ? '' : 's'
+              } covering <strong>${palletSumCheck.toLocaleString()} unit${palletSumCheck === 1 ? '' : 's'}</strong>.${
+                unlabelled > 0
+                  ? ` <strong>${unlabelled.toLocaleString()} unit${unlabelled === 1 ? ' is' : 's are'} not on any label</strong>, as you confirmed.`
+                  : ''
+              }`
+            : `${pallets.length} label${pallets.length === 1 ? '' : 's'} created, covering <strong>${palletSumCheck.toLocaleString()} unit${palletSumCheck === 1 ? '' : 's'}</strong>.`
+        }
         Saved to <button type="button" class="link-btn" id="pallet-view-history-link">Past Pallet Labels</button> as &ldquo;${escapeHtml(batchRecord.name)}&rdquo;.
       </p>
     `;
@@ -852,6 +1256,50 @@ function renderPalletLabelsScreen(root) {
     }
 
     renderPalletPreview(pallets);
+  }
+
+  // Shown instead of generating when the pallet rules would leave units off
+  // the labels. Lists each affected row and needs a tick plus a button
+  // press; the confirmation only holds for this exact set of lines.
+  function renderLossAcknowledgement(discrepancies, signature) {
+    const feedbackEl = document.getElementById('pallet-generate-feedback');
+    const totalLost = discrepancies.reduce((sum, d) => sum + (d.entered - d.onLabels), 0);
+    feedbackEl.innerHTML = `
+      <div class="pallet-totals-mismatch label-loss-panel">
+        <p class="label-loss-title">
+          Nothing has been generated yet: <strong>${totalLost.toLocaleString()} unit${totalLost === 1 ? '' : 's'}</strong>
+          would not appear on any label.
+        </p>
+        <p>
+          The pallet rules print a pallet that is up to 5% over its size limit as exactly the limit, so the extra units
+          aren&rsquo;t shown on any label:
+        </p>
+        <ul class="label-review-errors">
+          ${discrepancies
+            .map(
+              (d) => `<li>Row ${d.row}, ${escapeHtml(d.label)}: ${d.entered.toLocaleString()} entered, labels would show
+                ${d.onLabels.toLocaleString()} (${d.pallets.map((q) => q.toLocaleString()).join(' + ')}, limit ${d.max.toLocaleString()} per pallet).
+                <strong>${(d.entered - d.onLabels).toLocaleString()} not labelled.</strong></li>`
+            )
+            .join('')}
+        </ul>
+        <p>Correct the quantities in the table if this isn&rsquo;t intended. Otherwise confirm to generate anyway.</p>
+        <label class="label-loss-ack">
+          <input type="checkbox" id="label-loss-ack" />
+          <span>I understand ${totalLost.toLocaleString()} unit${totalLost === 1 ? '' : 's'} will not be on any label.</span>
+        </label>
+        <button type="button" class="btn btn-primary mt-sm" id="label-loss-continue">Generate anyway</button>
+      </div>
+    `;
+    document.getElementById('label-loss-continue').addEventListener('click', () => {
+      if (!document.getElementById('label-loss-ack').checked) {
+        showToast('Tick the box to confirm the unlabelled units first');
+        return;
+      }
+      review.lossAcknowledged = signature;
+      attemptGenerate();
+    });
+    feedbackEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function renderMissingSizePrompt(missingSizes, onSaved) {
@@ -940,194 +1388,13 @@ function renderPalletLabelsScreen(root) {
       try {
         const limits = await PalletLabelsBackend.getPalletLimits();
         const blob = await LabelEngine.generatePalletLabelsPdf(pallets, limits);
-        await triggerBlobDownload(blob, `${filenameBase}.pdf`);
+        await triggerBlobDownload(blob, labelsPdfFilename(filenameBase));
       } catch (err) {
         showToast(`Couldn't generate the PDF: ${err && err.message ? err.message : 'unknown error'}`);
       } finally {
         btn.disabled = false;
         btn.textContent = originalText;
       }
-    });
-  }
-
-  // ----- Quick Labels (manual entry, no packing slip, Phase 3) -----
-  // Bypasses the packing-slip workflow entirely: each row IS one label,
-  // exactly as entered — no pallet-size splitting, no grand-total check
-  // (LabelEngine's 'free-form' validation mode, see decision C.4). Good
-  // for a one-off reprint or a couple of extra pallets an employee already
-  // knows the details of. Best Before and Batch code are optional per row
-  // — leaving either blank simply omits it from that label (the "choose
-  // which optional information appears" requirement). Generated batches
-  // are saved to the same Past Pallet Labels history as the automatic
-  // path, so history/reprinting is shared across both workflows.
-
-  let quickRowCounter = 0;
-  function nextQuickRowId() {
-    quickRowCounter += 1;
-    return `qrow_${quickRowCounter}`;
-  }
-
-  function renderQuickLabelsTab() {
-    root.innerHTML = `
-      ${subNavHtml('quick')}
-      <div class="card">
-        <h2>Quick Labels</h2>
-        <p class="helper-text">
-          Build one or more labels by hand &mdash; no packing slip needed. Each row becomes exactly one label;
-          leave Best Before or Batch code blank to leave it off that label.
-        </p>
-        <div class="table-scroll">
-          <table class="line-items-table" id="quick-labels-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Flavour</th>
-                <th>Qty</th>
-                <th>Best Before</th>
-                <th>Batch code(s)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="quick-labels-body"></tbody>
-          </table>
-        </div>
-        <button type="button" class="btn mt-sm" id="quick-label-add-btn">+ Add Label</button>
-        <div id="quick-labels-feedback"></div>
-        <button type="button" class="btn btn-primary btn-block mt-sm" id="quick-labels-generate-btn">Generate Labels</button>
-      </div>
-      <div id="pallet-preview-wrap"></div>
-    `;
-    wireSubNav();
-
-    const tbody = document.getElementById('quick-labels-body');
-
-    function addQuickRow(prefill) {
-      const p = prefill || {};
-      const rowId = nextQuickRowId();
-      const tr = document.createElement('tr');
-      tr.dataset.rowId = rowId;
-      const batchValue = p.batchCodes ? p.batchCodes.join(', ') : '';
-      tr.innerHTML = `
-        <td><input type="text" class="quick-label-product" placeholder="e.g. Whey Protein 450g" value="${escapeHtml(p.name || '')}" /></td>
-        <td><input type="text" class="quick-label-flavour" placeholder="optional" value="${escapeHtml(p.flavour || '')}" /></td>
-        <td><input type="number" class="quick-label-qty" min="1" placeholder="e.g. 1" value="${p.quantity || ''}" /></td>
-        <td>
-          <div class="line-item-bbd">
-            <select class="quick-label-bbe-month">
-              <option value="">MM</option>
-              ${bestBeforeMonthOptions()
-                .map((m) => `<option value="${m}"${m === p.bbeMonth ? ' selected' : ''}>${m}</option>`)
-                .join('')}
-            </select>
-            <select class="quick-label-bbe-year">
-              <option value="">YY</option>
-              ${bestBeforeYearOptions()
-                .map((y) => `<option value="${y}"${y === p.bbeYear ? ' selected' : ''}>${y}</option>`)
-                .join('')}
-            </select>
-          </div>
-        </td>
-        <td><input type="text" class="quick-label-batch" placeholder="optional" value="${escapeHtml(batchValue)}" /></td>
-        <td>
-          <button type="button" class="btn btn-sm quick-label-duplicate">Duplicate</button>
-          <button type="button" class="btn btn-sm btn-danger quick-label-remove">Remove</button>
-        </td>
-      `;
-      tr.querySelector('.quick-label-remove').addEventListener('click', () => tr.remove());
-      tr.querySelector('.quick-label-duplicate').addEventListener('click', () => {
-        addQuickRow(readQuickRow(tr));
-      });
-      tbody.appendChild(tr);
-    }
-
-    function readQuickRow(tr) {
-      return {
-        name: tr.querySelector('.quick-label-product').value.trim(),
-        flavour: tr.querySelector('.quick-label-flavour').value.trim(),
-        quantity: tr.querySelector('.quick-label-qty').value,
-        bbeMonth: tr.querySelector('.quick-label-bbe-month').value,
-        bbeYear: tr.querySelector('.quick-label-bbe-year').value,
-        batchCodes: tr
-          .querySelector('.quick-label-batch')
-          .value.trim()
-          .split(',')
-          .map((b) => b.trim())
-          .filter(Boolean),
-      };
-    }
-
-    addQuickRow();
-
-    document.getElementById('quick-label-add-btn').addEventListener('click', () => addQuickRow());
-
-    document.getElementById('quick-labels-generate-btn').addEventListener('click', async () => {
-      const feedbackEl = document.getElementById('quick-labels-feedback');
-      const previewWrap = document.getElementById('pallet-preview-wrap');
-      feedbackEl.innerHTML = '';
-      previewWrap.innerHTML = '';
-
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      if (!rows.length) {
-        showToast('Add at least one label first');
-        return;
-      }
-
-      const lines = [];
-      for (const tr of rows) {
-        const raw = readQuickRow(tr);
-        if (!raw.name || !raw.quantity) {
-          showToast('Every label needs at least a product name and a quantity');
-          return;
-        }
-        lines.push({
-          name: raw.name,
-          flavour: raw.flavour,
-          quantity: Number(raw.quantity),
-          bbe: raw.bbeMonth && raw.bbeYear ? formatBestBefore(raw.bbeMonth, raw.bbeYear) : '',
-          batchCodes: raw.batchCodes,
-        });
-      }
-
-      const validation = LabelEngine.validatePalletLines(lines, { mode: 'free-form' });
-      if (!validation.ok) {
-        feedbackEl.innerHTML = `<p class="pallet-totals-mismatch">${escapeHtml(validation.error)}</p>`;
-        return;
-      }
-
-      // Each row IS one label — no pallet-size splitting applies here.
-      const pallets = lines;
-      const grandTotal = pallets.reduce((sum, p) => sum + p.quantity, 0);
-
-      let batchRecord;
-      try {
-        batchRecord = await PalletLabelsBackend.addPalletLabelBatch({
-          filename: '',
-          sourceFileDataUrl: null,
-          pallets,
-          grandTotal,
-        });
-      } catch (err) {
-        feedbackEl.innerHTML = `
-          <p class="pallet-totals-mismatch">
-            Saving this batch failed: ${escapeHtml(err && err.message ? err.message : 'unknown error')}. Try again.
-          </p>
-        `;
-        return;
-      }
-
-      feedbackEl.innerHTML = `
-        <p class="pallet-totals-ok">
-          ${pallets.length} label${pallets.length === 1 ? '' : 's'} created. Saved to
-          <button type="button" class="link-btn" id="quick-view-history-link">Past Pallet Labels</button>
-          as &ldquo;${escapeHtml(batchRecord.name)}&rdquo;.
-        </p>
-      `;
-      const historyLink = document.getElementById('quick-view-history-link');
-      if (historyLink) {
-        historyLink.addEventListener('click', () => renderBatchDetail(batchRecord.id));
-      }
-
-      renderPalletPreview(pallets);
     });
   }
 
@@ -1150,7 +1417,7 @@ function renderPalletLabelsScreen(root) {
                     <div class="delivery-history-filename">${escapeHtml(b.name)}</div>
                     <div class="delivery-history-meta">
                       Generated ${escapeHtml(formatPalletBatchDate(b.generatedAt))} &middot;
-                      ${b.grandTotal.toLocaleString()} unit${b.grandTotal === 1 ? '' : 's'} &middot;
+                      ${batchUnitsText(b)} &middot;
                       ${escapeHtml(sourceFileStatusText(b))}
                     </div>
                   </div>
@@ -1249,7 +1516,7 @@ function renderPalletLabelsScreen(root) {
           Generated ${escapeHtml(formatPalletBatchDate(batch.generatedAt))}${
       batch.filename ? ` &middot; ${escapeHtml(batch.filename)}` : ' &middot; entered manually'
     } &middot; ${batch.pallets.length} label${batch.pallets.length === 1 ? '' : 's'} &middot;
-          ${batch.grandTotal.toLocaleString()} unit${batch.grandTotal === 1 ? '' : 's'} total.
+          ${batchUnitsText(batch)}.
         </p>
         ${
           batchHasSourceFile(batch)
@@ -1273,7 +1540,9 @@ function renderPalletLabelsScreen(root) {
       fitPalletNameBlock(block, top.clientHeight);
     });
 
-    wireDownloadPdfButton('download-pallet-batch-btn', batch.pallets, batch.name.replace(/[^\w.\-]+/g, '_'));
+    // "-labels" keeps a reprint distinct from the original delivery note's
+    // own file, which is often what the batch is named after.
+    wireDownloadPdfButton('download-pallet-batch-btn', batch.pallets, `${batch.name}-labels`);
 
     document.getElementById('print-pallet-batch-btn').addEventListener('click', () => {
       setPrintPageSize('6in 4in');

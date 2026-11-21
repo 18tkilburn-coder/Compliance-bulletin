@@ -249,14 +249,14 @@ const LabelEngine = (() => {
       const q = Math.max(15, Math.min(60, Math.round(s * 0.62 * 1.5))); // Python: q ratio
       const bbeStart = Math.max(12, Math.round(q * 0.75)); // Python: bbe ratio
       const gap = Math.max(24, Math.round(0.6 * s));
-      const batchFit = fitText(
-        font,
-        `BATCH : ${batchText}`.replace(/\s+$/, ''),
-        NARROW_WIDTH_PT,
-        Math.max(10, Math.min(33, bbeStart + 2)),
-        3
-      );
-      const bbeFit = fitText(font, `BBE : ${bbeText}`, NARROW_WIDTH_PT, bbeStart, 2);
+      // BBE and batch are optional on manually entered labels: a blank one
+      // gets no line at all (not an empty "BBE :" / "BATCH :"), matching
+      // the QR payload and the on-screen preview. When both are present —
+      // every delivery-note label — the layout is exactly as before.
+      const batchFit = batchText
+        ? fitText(font, `BATCH : ${batchText}`.replace(/\s+$/, ''), NARROW_WIDTH_PT, Math.max(10, Math.min(33, bbeStart + 2)), 3)
+        : { lines: [], size: bbeStart };
+      const bbeFit = bbeText ? fitText(font, `BBE : ${bbeText}`, NARROW_WIDTH_PT, bbeStart, 2) : { lines: [], size: bbeStart };
 
       const parts = [
         [pLines, s, s * 1.05, 0],

@@ -96,12 +96,16 @@ const EXTRACTION_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['batch_code', 'bbe_month', 'bbe_year', 'quantity'],
+              required: ['batch_code', 'bbe_month', 'bbe_year', 'quantity', 'uncertain'],
               properties: {
                 batch_code: { type: 'string', description: 'Batch column exactly as printed, e.g. "12345-1".' },
                 bbe_month: { type: 'integer', description: 'Month (1-12) of the MM/YYYY date in the LOT column.' },
                 bbe_year: { type: 'integer', description: 'Four-digit year of the MM/YYYY date in the LOT column.' },
                 quantity: { type: 'integer', description: 'The Total column for this batch row. Never the Count column.' },
+                uncertain: {
+                  type: 'boolean',
+                  description: 'True if any value in this row was hard to read, hand-corrected, or is a best guess.',
+                },
               },
             },
           },
@@ -133,7 +137,7 @@ Rules:
 - Copy product names, sizes, flavours and batch codes exactly as printed. Do not correct spelling or expand abbreviations.
 - Put each "<product> Total" row's number in stated_total for that product, and the "Grand Total" in grand_total. Do not compute these yourself; transcribe what is printed, or null if absent.
 - A hand-written correction (a circled or crossed-out number) replaces the printed number only if it equals the sum of that product's batch rows. Otherwise keep the printed number. Either way, mention the correction in warnings.
-- If a cell is unreadable, give your best reading and say exactly which product and row in warnings. Never silently guess.
+- If a cell is unreadable, give your best reading, set uncertain to true on that row, and say exactly which product and row in warnings. Never silently guess.
 - If the document is not a packing slip at all, return no products and explain in warnings.`;
 
 Deno.serve(async (req) => {

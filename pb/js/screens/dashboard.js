@@ -14,7 +14,7 @@ const QUICK_ACTION_DESCRIPTIONS = {
   delivery: 'Upload a delivery note and generate QR labels',
   stocktake: 'Printable snapshot of all current stock',
   barcodeLabels: 'Generate product barcode labels',
-  palletLabels: 'Generate QR pallet labels from a packing slip',
+  palletLabels: 'Generate QR pallet labels from a delivery note or by hand',
 };
 
 function dashboardTimeAgo(timestamp) {
