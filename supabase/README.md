@@ -99,8 +99,8 @@ a few pence per sheet at current API prices.
 3. Deploy: `supabase functions deploy extract-packing-slip`.
    `SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided to the function
    automatically.
-4. Fill in `js/supabaseConfig.js` (and `pb/js/supabaseConfig.js`) if not
-   already done. Once a business is signed in, the Pallet Labels upload box
+4. Fill in `js/supabaseConfig.js` if not already done (there is one
+   application shell for every workspace, so this is the only config file). Once a business is signed in, the Pallet Labels upload box
    accepts photos as well as PDFs.
 
 ### Phase 4 acceptance test

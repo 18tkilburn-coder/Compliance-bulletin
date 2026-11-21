@@ -1,30 +1,69 @@
 // Local, in-browser data store for the prototype.
 // Backed by localStorage so the demo data survives page reloads.
 // A real build would replace this with an API-backed database.
+//
+// Workspace-aware (single application shell): every key is prefixed with
+// the CURRENT workspace's storage prefix, set by WorkspaceContext through
+// Store.useWorkspace(prefix). The prefixes are exactly the ones the two
+// former copies of the app used ('per4m_' and 'pb_'), so each workspace's
+// existing data on a device is read in place — nothing is migrated or
+// copied. Switching workspace re-points every read and write at once.
 
 const Store = (() => {
-  const KEYS = {
-    products: 'per4m_products',
-    locations: 'per4m_locations',
-    pickingBays: 'per4m_picking_bays',
-    stockEntries: 'per4m_stockEntries',
-    staff: 'per4m_staff',
-    pendingDeliveryItems: 'per4m_pending_delivery_items',
-    deliveries: 'per4m_deliveries',
-    palletLimits: 'per4m_pallet_limits',
-    palletLabelBatches: 'per4m_pallet_label_batches',
-    barcodeLabelBatches: 'per4m_barcode_label_batches',
-    users: 'per4m_users',
+  // Key names, without the workspace prefix. Unchanged from the two former
+  // copies of the app.
+  const KEY_NAMES = {
+    products: 'products',
+    locations: 'locations',
+    pickingBays: 'picking_bays',
+    stockEntries: 'stockEntries',
+    staff: 'staff',
+    pendingDeliveryItems: 'pending_delivery_items',
+    deliveries: 'deliveries',
+    palletLimits: 'pallet_limits',
+    palletLabelBatches: 'pallet_label_batches',
+    barcodeLabelBatches: 'barcode_label_batches',
+    users: 'users',
     // Bumped to v4 to force a reseed onto the full real PER4M product
     // catalogue (replacing the earlier placeholder products).
-    seeded: 'per4m_seeded_v5',
+    seeded: 'seeded_v5',
   };
 
-  // Staff logins are shared across the Per4m and PB Wholesale instances —
-  // both are served from the same origin, so this sibling key lives in the
-  // same localStorage. A manager creating or deleting an account on either
-  // system keeps both namespaces in sync (see getUsers/addUser/deleteUser).
-  const SIBLING_USERS_KEY = 'pb_users';
+  function keysFor(prefix) {
+    const keys = {};
+    Object.keys(KEY_NAMES).forEach((k) => {
+      keys[k] = `${prefix}${KEY_NAMES[k]}`;
+    });
+    return keys;
+  }
+
+  // Prefix in use until WorkspaceContext selects a workspace (it does so as
+  // soon as its script loads, before any screen runs).
+  let currentPrefix = 'per4m_';
+  let KEYS = keysFor(currentPrefix);
+
+  // Staff logins are shared across every workspace's namespace, exactly as
+  // they were shared between the two former copies: a manager creating or
+  // deleting an account in either workspace keeps all of them in sync (see
+  // getUsers/addUser/deleteUser). Prototype only — replaced by real
+  // accounts in the authentication stage.
+  const ALL_USERS_KEYS = ['per4m_users', 'pb_users'];
+  function siblingUserKeys() {
+    return ALL_USERS_KEYS.filter((k) => k !== KEYS.users);
+  }
+
+  // Points every read and write at another workspace's data, seeding that
+  // workspace's local data the first time it's used on this device.
+  function useWorkspace(prefix) {
+    if (!/^[a-z0-9]+_$/.test(prefix || '')) throw new Error(`Invalid workspace storage prefix: ${prefix}`);
+    currentPrefix = prefix;
+    KEYS = keysFor(prefix);
+    seedIfNeeded();
+  }
+
+  function getWorkspacePrefix() {
+    return currentPrefix;
+  }
 
   function load(key, fallback) {
     const raw = localStorage.getItem(key);
@@ -236,17 +275,18 @@ const Store = (() => {
   // and never store a password in plain text the way this demo does.
   function getUsers() {
     const own = load(KEYS.users, []);
-    const sibling = load(SIBLING_USERS_KEY, []);
     const byId = new Map();
     own.forEach((u) => byId.set(u.id, u));
-    sibling.forEach((u) => {
-      if (!byId.has(u.id)) byId.set(u.id, u);
+    siblingUserKeys().forEach((key) => {
+      load(key, []).forEach((u) => {
+        if (!byId.has(u.id)) byId.set(u.id, u);
+      });
     });
     const merged = Array.from(byId.values());
-    // Self-heal: the two namespaces drift apart whenever an account is
-    // created or deleted from only one of them, so re-sync both on every read.
+    // Self-heal: the namespaces drift apart whenever an account is created
+    // or deleted from only one of them, so re-sync all of them on every read.
     save(KEYS.users, merged);
-    save(SIBLING_USERS_KEY, merged);
+    siblingUserKeys().forEach((key) => save(key, merged));
     return merged.sort((a, b) => b.createdAt - a.createdAt);
   }
 
@@ -272,14 +312,14 @@ const Store = (() => {
     };
     users.push(user);
     save(KEYS.users, users);
-    save(SIBLING_USERS_KEY, users);
+    siblingUserKeys().forEach((key) => save(key, users));
     return { user };
   }
 
   function deleteUser(id) {
     const users = getUsers().filter((u) => u.id !== id);
     save(KEYS.users, users);
-    save(SIBLING_USERS_KEY, users);
+    siblingUserKeys().forEach((key) => save(key, users));
   }
 
   function getLocations() {
@@ -654,9 +694,13 @@ const Store = (() => {
     };
   }
 
-  seedIfNeeded();
+  // No seeding here: WorkspaceContext calls useWorkspace() as soon as its
+  // script loads (straight after this one), which seeds the selected
+  // workspace if needed, before any screen reads data.
 
   return {
+    useWorkspace,
+    getWorkspacePrefix,
     getProducts,
     addProduct,
     findProducts,

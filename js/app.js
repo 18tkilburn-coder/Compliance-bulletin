@@ -128,16 +128,105 @@ const AppRouter = (() => {
     SCREENS[name](root);
   }
 
+  // ----- Workspace (portal) switcher, top-right -----
+  // Lists only what WorkspaceContext.available() offers (with real
+  // authentication: only the workspaces the database allows this person).
+  // Switching never signs anyone out: it changes the workspace's data,
+  // branding and settings, then re-renders the current screen.
+  const switcher = document.getElementById('workspace-switcher');
+  const switcherBtn = document.getElementById('workspace-switcher-btn');
+  const switcherMenu = document.getElementById('workspace-switcher-menu');
+  const switcherCurrent = document.getElementById('workspace-switcher-current');
+
+  function closeSwitcherMenu() {
+    if (!switcherMenu) return;
+    switcherMenu.hidden = true;
+    switcherBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderSwitcher() {
+    if (!switcher) return;
+    const all = WorkspaceContext.available();
+    const current = WorkspaceContext.getCurrent();
+    switcher.hidden = all.length < 2;
+    switcherCurrent.textContent = current ? current.name : 'Workspace';
+    switcherBtn.setAttribute('aria-label', `Portal: ${current ? current.name : ''}. Switch portal`);
+    switcherMenu.innerHTML = `
+      <div class="workspace-switcher-label">Switch portal</div>
+      ${all
+        .map(
+          (w) => `
+        <button type="button" class="workspace-switcher-option" role="menuitem" data-workspace="${escapeHtml(w.slug)}"
+          ${current && w.slug === current.slug ? 'aria-current="true"' : ''}>
+          <span class="workspace-switcher-dot" style="background:${escapeHtml(w.theme.brand)}" aria-hidden="true"></span>
+          <span>${escapeHtml(w.name)}</span>
+          ${current && w.slug === current.slug ? '<span class="workspace-switcher-check">Current</span>' : ''}
+        </button>
+      `
+        )
+        .join('')}
+    `;
+    switcherMenu.querySelectorAll('.workspace-switcher-option').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        closeSwitcherMenu();
+        const slug = opt.dataset.workspace;
+        if (current && slug === current.slug) return;
+        WorkspaceContext.select(slug);
+      });
+    });
+  }
+
+  if (switcherBtn) {
+    switcherBtn.addEventListener('click', () => {
+      const opening = switcherMenu.hidden;
+      if (opening) {
+        renderSwitcher();
+        switcherMenu.hidden = false;
+        switcherBtn.setAttribute('aria-expanded', 'true');
+        const first = switcherMenu.querySelector('.workspace-switcher-option:not([aria-current="true"])');
+        if (first) first.focus();
+      } else {
+        closeSwitcherMenu();
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!switcher.contains(e.target)) closeSwitcherMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !switcherMenu.hidden) {
+        closeSwitcherMenu();
+        switcherBtn.focus();
+      }
+    });
+  }
+
+  // After a switch: close anything belonging to the previous workspace, then
+  // show the same screen with the new workspace's data and branding.
+  WorkspaceContext.onChange((ws) => {
+    closeModal();
+    const palette = document.getElementById('command-palette-overlay');
+    if (palette) palette.hidden = true;
+    renderSwitcher();
+    if (!appShell.hidden) {
+      showScreen(activeScreen);
+      showToast(`Switched to ${ws.name}`);
+    }
+  });
+
   function enterApp() {
     gate.hidden = true;
     appShell.hidden = false;
     banner.hidden = false;
     root.hidden = false;
+    WorkspaceContext.applyTheme();
+    renderSwitcher();
     buildTabs();
     showScreen('dashboard');
   }
 
   function showGate() {
+    WorkspaceContext.clearTheme();
+    closeSwitcherMenu();
     gate.hidden = false;
     appShell.hidden = true;
     closeSidebarDrawer();
@@ -194,6 +283,7 @@ const AppRouter = (() => {
   const businessGate = document.getElementById('business-gate');
 
   function showBusinessGate() {
+    WorkspaceContext.clearTheme();
     gate.hidden = true;
     appShell.hidden = true;
     if (businessGate) businessGate.hidden = false;
@@ -257,17 +347,6 @@ const AppRouter = (() => {
     goTo: (name) => showScreen(name),
     tabKeysForCurrentPortal,
   };
-})();
-
-// ----- System switch link: the real source tree serves this page at
-// /index.html with the PB instance at /pb/index.html, but the single-file
-// Artifact bundle flattens both into sibling files (index.html / pb.html)
-// — swap the link's href to match whichever context actually loaded.
-(() => {
-  const btn = document.getElementById('system-switch-btn');
-  if (!btn) return;
-  const bundled = !!document.getElementById('pdf-worker-b64');
-  btn.href = bundled ? 'pb.html' : 'pb/index.html';
 })();
 
 // ----- Login page: show/hide password toggle. Cosmetic only — the

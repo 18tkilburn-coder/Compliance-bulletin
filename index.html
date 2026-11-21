@@ -106,7 +106,7 @@
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <span class="brand-mark">PER4M<span class="brand-accent">WAREHOUSE</span></span>
+        <span class="brand-mark"><span id="brand-mark-main">PER4M</span><span class="brand-accent" id="brand-mark-accent">WAREHOUSE</span></span>
         <span class="brand-sub">Warehouse Hub</span>
       </div>
 
@@ -134,10 +134,14 @@
         </button>
         <nav class="breadcrumb" id="breadcrumb" aria-live="polite"></nav>
         <div class="topbar-clock" id="topbar-clock"></div>
-        <a href="pb/index.html" id="system-switch-btn" class="system-switch-btn">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h13l-4-4M17 17H4l4 4"/></svg>
-          <span>Switch to PB Wholesale</span>
-        </a>
+        <div class="workspace-switcher" id="workspace-switcher" hidden>
+          <button type="button" class="workspace-switcher-btn" id="workspace-switcher-btn" aria-haspopup="true" aria-expanded="false" aria-controls="workspace-switcher-menu">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h13l-4-4M17 17H4l4 4"/></svg>
+            <span class="workspace-switcher-btn-name" id="workspace-switcher-current">Workspace</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="workspace-switcher-menu" id="workspace-switcher-menu" role="menu" aria-label="Switch portal" hidden></div>
+        </div>
       </header>
 
       <div class="prototype-banner" id="prototype-banner" hidden>
@@ -174,6 +178,7 @@
   <script src="js/supabaseConfig.js"></script>
   <script src="js/supabaseClient.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/workspaceContext.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/portal.js"></script>
   <script src="js/businessAuth.js"></script>
