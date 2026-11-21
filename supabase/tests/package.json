@@ -6,7 +6,9 @@
   "scripts": {
     "seed": "node seed_test_businesses.js",
     "test": "node cross_tenant_isolation.test.js",
-    "test:extract": "node extract_function_isolation.test.js"
+    "test:extract": "node extract_function_isolation.test.js",
+    "seed:tenancy": "node seed_test_tenancy.js",
+    "test:tenancy": "node tenancy_foundation.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4"

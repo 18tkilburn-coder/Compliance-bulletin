@@ -1,0 +1,12 @@
+{
+  "name": "pallet-pal-local-migration-tests",
+  "private": true,
+  "description": "Runs the Supabase migrations on a local, in-process PostgreSQL (PGlite) with stand-ins for Supabase's roles, auth and storage, and checks the security rules. Never touches the live project.",
+  "type": "module",
+  "scripts": {
+    "test": "node tenancy_foundation.local.test.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.15"
+  }
+}
